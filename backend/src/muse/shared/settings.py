@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     task_queue_main: str = "muse-main"
     task_queue_model: str = "model-inference"
 
+    session_secret: str = Field(default="", repr=False)
+    session_ttl_seconds: int = 7 * 24 * 3600
+    session_cookie_secure: bool = False
+
     centrifugo_api_url: str = "http://centrifugo:8000/api"
     centrifugo_api_key: str = Field(default="", repr=False)
     centrifugo_token_secret: str = Field(default="", repr=False)
@@ -32,6 +36,8 @@ class Settings(BaseSettings):
     model_base_url: str = "http://host.docker.internal:11434"
     model_name: str = "qwen3.8:27b"
     model_context_tokens: int = 32768
+    model_timeout_seconds: float = 600.0
+    chat_history_messages: int = 20
 
     probe_timeout_seconds: float = 2.0
     heartbeat_interval_seconds: float = 10.0

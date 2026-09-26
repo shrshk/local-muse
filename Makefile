@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help env build up up-detached down restart logs ps psql migrate \
+.PHONY: help env create-user build up up-detached down restart logs ps psql migrate \
         test test-integration lint format typecheck check web-dev clean
 
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
@@ -13,6 +13,9 @@ env: ## Create .env from .env.example with random secrets (refuses to overwrite)
 	@test ! -f .env || (echo ".env exists; delete it first to regenerate" && exit 1)
 	@awk '{ if ($$0 ~ /=change-me$$/) { cmd="openssl rand -hex 32"; cmd | getline s; close(cmd); sub(/change-me$$/, s) } print }' .env.example > .env
 	@echo "wrote .env"
+
+create-user: ## Create a login user: make create-user USERNAME=owner (prompts for password)
+	$(COMPOSE) exec backend python -m muse.cli create-user --username $(or $(USERNAME),owner)
 
 build: ## Build all images
 	$(COMPOSE) build

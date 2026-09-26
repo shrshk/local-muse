@@ -4,15 +4,21 @@
 
 ```python
 class ModelProvider(Protocol):
-    async def complete(self, req: CompletionRequest) -> CompletionResponse: ...
-    def stream(self, req: CompletionRequest) -> AsyncIterator[Delta]: ...
+    name: str
+    is_local: bool
+    def model(self) -> pydantic_ai.models.Model: ...
     async def health(self) -> ProviderHealth: ...
 ```
 
+Deviation from spec §14: `complete` and `stream` are not re-declared. PydanticAI's `Model`
+already is that contract (`request`, `request_stream`), and every agent call goes through it, so a
+second copy would be dead weight. A provider's job is to build that `Model` and report health.
+`models/factory.py` picks the provider; in `offline` mode it refuses anything that is not local.
+
 | Provider | v1 |
 |---|---|
-| `OllamaProvider` | implemented (Phase 2) |
-| `OpenAICompatibleProvider` | implemented if cheap (Ollama speaks the same API) |
+| `OllamaProvider` | implemented (Phase 2): `OpenAIChatModel` over Ollama's `/v1`, 600 s timeout, 1 retry |
+| `OpenAICompatibleProvider` | not needed yet (Ollama is reached through the OpenAI-compatible API) |
 | `AnthropicProvider` | interface only |
 | `MLXProvider` | interface only (`mlx_lm.server`, benchmark later) |
 
@@ -48,6 +54,12 @@ The spec assumed `qwen3:30b-a3b` (MoE, ~3B active per token). This Mac runs `qwe
 Dense means every token touches all 27B weights, so expect several times lower tokens/s than an
 A3B MoE on the same machine. Keep `MODEL_CONTEXT_TOKENS=32768` until the KV cost is measured.
 Switching models is a `MODEL_NAME` change.
+
+Measured 2026-09-26: tool calls are well-formed with thinking on or off; warm tool-call turn
+~3.8 s (~15–20 tok/s); cold load ~15 s. Loaded size 18.3 GB, all on GPU; system free memory
+dropped to 16% with normal desktop apps open. Ollama loaded the model with its native 256k
+context window because the OpenAI-compatible API cannot pass `num_ctx`. KV memory grows with
+actual context, but to cap it set `OLLAMA_CONTEXT_LENGTH=32768` in Ollama's environment.
 
 ## Expectations
 

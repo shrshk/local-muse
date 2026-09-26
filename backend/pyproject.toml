@@ -15,6 +15,9 @@ dependencies = [
     "pydantic>=2.11",
     "pydantic-settings>=2.15",
     "structlog>=26.1",
+    "pydantic-ai-slim[openai]>=2.51",
+    "argon2-cffi>=25.1",
+    "tzdata>=2026.4",
 ]
 
 [dependency-groups]

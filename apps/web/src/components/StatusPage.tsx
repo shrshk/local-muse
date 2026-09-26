@@ -9,7 +9,7 @@ export function StatusPage() {
   return (
     <main className="page">
       <header className="page__head">
-        <h1>Local Muse</h1>
+        <h2>Status</h2>
         <p className="page__sub">
           {error
             ? `backend unreachable: ${error}`

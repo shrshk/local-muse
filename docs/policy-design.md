@@ -38,6 +38,24 @@ Registry steps:
 Executors are private to the registry module. `ToolGateway.invoke(intent)` is the only public
 path: registry → policy → executor → audit.
 
+## Implementation (Phase 2)
+
+- `tools/schema.py`: `ToolIntent` (`extra="forbid"`), `ToolSpec`, `ActionProposal` (frozen).
+- `tools/registry.py`: lookup and `propose()`; computes `approval_key`.
+- `tools/specs.py`: the only module that imports `tools/executors/`.
+- `tools/gateway.py`: `ToolGateway.invoke()` — the only reader of `ToolSpec.executor`.
+  Unknown tool → audit `tool.unknown`, no proposal. Bad args → audit `tool.invalid_args`, raise
+  `InvalidToolArgs` → the agent sees a retry prompt (one repair attempt). Otherwise record
+  `action.proposed` + `action.decided`, execute on ALLOW, record `action.executed|failed`.
+- `agents/toolset.py`: a PydanticAI `FunctionToolset` generated from the registry. Each tool holds
+  only name, description, JSON schema, and forwards `ToolIntent` to the gateway. PydanticAI's
+  own arg validation is skipped so the registry is the single validator. It is a
+  `FunctionToolset` so `TemporalAgent` can wrap each call in an activity (Phase 3).
+- Model-facing names replace `.` with `_` (`clock.now` → `clock_now`); the registry name is the
+  identity everywhere else.
+- Boundary tests (`tests/boundary/test_tool_boundary.py`) enforce the import and attribute
+  rules by AST, and that `ToolIntent` rejects classification fields.
+
 ## Enums
 
 ```text
@@ -68,7 +86,8 @@ DataClassification  PUBLIC PERSONAL AUTHENTICATED SECRET
 | 15 | risk ∈ {EXTERNAL_WRITE, SENSITIVE_EXTERNAL_WRITE, DESTRUCTIVE} | REQUIRE_APPROVAL |
 | 16 | default | REQUIRE_APPROVAL |
 
-Phase 2 ships the engine returning ALLOW for everything; Phase 6 installs this table. The tool
+Phase 2 ships the engine returning ALLOW for everything (`policy/engine.py`); Phase 6 installs
+this table. The tool
 stack does not change between the two.
 
 ## Browser context rules

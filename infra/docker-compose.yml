@@ -104,7 +104,9 @@ services:
 
   backend:
     <<: *app-image
-    environment: *app-env
+    environment:
+      <<: *app-env
+      SESSION_SECRET: ${SESSION_SECRET:?add SESSION_SECRET to .env (see .env.example)}
     mem_limit: 1g
     restart: unless-stopped
     depends_on:

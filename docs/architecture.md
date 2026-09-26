@@ -59,9 +59,12 @@ backend/src/muse/
   modules/        product domains: {domain}_controller.py (DB), _handler.py (logic), _schema.py
   worker/         Temporal worker entry point and process-level loops
   shared/         settings, logger, db engine, tables (SQLAlchemy Core)
+  agents/         coordinator, deps, gateway toolset (PydanticAI)
+  tools/          schema, registry, specs, gateway, recorder, executors/ (private to specs)
+  policy/         classification enums, engine
+  models/         provider protocol, Ollama provider, factory
   # later phases, per spec §26:
-  agents/ tools/ policy/ workflows/ activities/ browser/ sandbox/ realtime/ models/
-  notifications/ memory/
+  workflows/ activities/ browser/ realtime/ notifications/ memory/
 sandboxd/src/sandboxd/   separate package and image
 apps/web/                Vite + React + TypeScript PWA
 infra/                   compose, centrifugo, temporal, nginx config
@@ -133,7 +136,12 @@ Steady state without sandboxes ≈ 8.5 GB. Ollama runs natively and is outside t
 
 ## Auth
 
-Spec §18: single owner, password login, session cookie. No phase in §23 names it, but approvals
-(Phase 6) need it and conversations (Phase 3) should have it. Plan: land login in Phase 2 with
-the first user-owned table. Until then every port binds to `127.0.0.1` and the only
-unauthenticated write-free endpoints are health and the Centrifugo connection token.
+Spec §18: single owner, password login, session cookie. Landed in Phase 2.
+
+- Users are created by an operator command (`make create-user`); there is no sign-up endpoint.
+- Passwords: argon2id. Unknown usernames still run a verify, so timing does not reveal them.
+- Session: HS256 JWT in an `HttpOnly`, `SameSite=Strict` cookie scoped to `/api`, 7-day expiry,
+  signed with `SESSION_SECRET` and audience `muse-session`, so a Centrifugo token (other secret,
+  no audience) never works as a session. No sessions table: rotating the secret logs everyone out.
+- Public endpoints: `/api/health*`, `/api/auth/login`. Everything else needs the cookie.
+- CSRF: `SameSite=Strict` plus JSON-only bodies. Tailscale is the perimeter, not the auth.

@@ -6,7 +6,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 |---|---|
 | 0 Design docs | done |
 | 1 Platform skeleton | done |
-| 2 Local model + policy skeleton + chat | not started |
+| 2 Local model + policy skeleton + chat | done |
 | 3 Durable conversation | not started |
 | 4 Topics | not started |
 | 5 sandboxd + sandbox | not started |
@@ -65,7 +65,49 @@ Known limitations:
 - Workers register only a `ping` activity; no workflows until Phase 3.
 - Starlette warns that its TestClient's httpx backend is deprecated (sandboxd tests); harmless.
 
+## Phase 2 — Local model, policy skeleton, chat
+
+Done 2026-09-26.
+
+What works:
+
+- Owner login (argon2, signed `HttpOnly` cookie); `make create-user`. All non-health endpoints
+  require it; conversations are private to their owner.
+- `ToolIntent → ToolRegistry → ActionProposal → PolicyEngine (ALLOW all) → ToolGateway →
+  executor`, with `actions` and `audit_events` rows for every step. One tool: `clock.now`.
+- PydanticAI coordinator on `qwen3.8:27b` via Ollama (`/v1`). Tools reach the model as a
+  `FunctionToolset` generated from the registry; each only forwards to the gateway. One repair
+  attempt on bad args; max 8 model requests per turn.
+- Non-durable chat API + web chat (conversation list, timeline of messages and tool-call chips).
+- `GET /api/models/health`.
+
+Acceptance evidence (live, 2026-09-26):
+
+- "What is the current time in Asia/Tokyo? Use the clock tool." → model called `clock.now`
+  `{"timezone": "Asia/Tokyo"}`; `actions`: READ_ONLY / ALLOW / executed; `audit_events`:
+  `action.proposed, action.decided, action.executed`; reply quoted the tool's time.
+- Browser: "Tokyo and New York" → two parallel `clock.now` calls, both ALLOW, correct answer.
+- No cloud API: offline mode, provider `ollama` at `host.docker.internal:11434`, no cloud keys
+  in the backend env (integration test).
+- No gateway bypass: AST boundary tests (only `specs.py` imports executors; only `gateway.py`
+  reads `.executor`; agents never call `propose`/`evaluate`), plus a fake-model test where a
+  model-supplied `risk` arg is rejected and nothing executes.
+
+Tests: `make check` 59 unit/boundary; `make test-integration` 15 (incl. the real-model turn).
+
+Known limitations:
+
+- Assistant markdown renders as plain text (Phase 11 polish).
+- Chat history sent to the model is the last 20 messages; token-budgeted context and compaction
+  come with memory (Phase 4).
+- A model failure leaves the user message saved without a reply (returns 502).
+- Test users `itest-*` and `e2e-ui` accumulate in the local DB; harmless, delete at will.
+
 ## Decisions log
 
+- 2026-09-26: `ModelProvider` returns a PydanticAI `Model` instead of re-declaring
+  `complete`/`stream` (docs/model-provider.md).
+- 2026-09-26: Removed an `env-sync` make target; permission rules block testing anything that
+  writes `.env`, so new keys are added by hand (compose names the missing key).
 - 2026-09-26: Docker Desktop VM stays at 32 GB. It is a ceiling, not a reservation; revisit only on
   memory pressure with the model loaded (measure in Phase 2).

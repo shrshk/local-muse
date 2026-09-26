@@ -4,8 +4,9 @@ from typing import Any
 import httpx
 import pytest
 
+from muse.models.ollama import OllamaProvider
 from muse.modules.health.health_schema import ComponentStatus
-from muse.modules.health.probes import CentrifugoProbe, ModelProbe, SandboxdProbe
+from muse.modules.health.probes import CentrifugoProbe, SandboxdProbe
 from muse.sandbox.client import SandboxClient
 from muse.shared.settings import Settings
 
@@ -37,14 +38,14 @@ def refuse(request: httpx.Request) -> httpx.Response:
         (lambda _: httpx.Response(500), ComponentStatus.OFFLINE),
     ],
 )
-async def test_model_probe(handler: Any, expected: ComponentStatus):
-    status, _ = await ModelProbe(client(handler), SETTINGS).check()
-    assert status is expected
+async def test_ollama_health(handler: Any, expected: ComponentStatus):
+    health = await OllamaProvider(SETTINGS, client(handler)).health()
+    assert health.status is expected
 
 
-async def test_model_probe_tells_you_what_to_pull():
-    _, detail = await ModelProbe(client(tags()), SETTINGS).check()
-    assert detail == "run: ollama pull qwen3:30b-a3b"
+async def test_ollama_health_tells_you_what_to_pull():
+    health = await OllamaProvider(SETTINGS, client(tags())).health()
+    assert health.detail == "run: ollama pull qwen3:30b-a3b"
 
 
 async def test_centrifugo_probe_sends_api_key():

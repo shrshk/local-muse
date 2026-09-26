@@ -45,10 +45,14 @@ async def connect(token: str) -> dict[str, object]:
         return reply
 
 
-async def test_centrifugo_accepts_a_backend_token():
-    async with httpx.AsyncClient() as http:
-        token = (await http.post(f"{WEB_URL}/api/realtime/token", timeout=5)).json()["token"]
-    reply = await connect(token)
+@pytest.fixture
+def realtime_token(client: httpx.Client) -> str:
+    token: str = client.post("/api/realtime/token").json()["token"]
+    return token
+
+
+async def test_centrifugo_accepts_a_backend_token(realtime_token: str):
+    reply = await connect(realtime_token)
     assert "connect" in reply, reply
 
 

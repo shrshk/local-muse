@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from temporalio.service import RPCError
 
+from muse.models.provider import ModelProvider
 from muse.modules.health.health_schema import ComponentHealth, ComponentStatus
 from muse.sandbox.client import SandboxClient
 from muse.shared.settings import Settings
@@ -126,19 +127,10 @@ class SandboxdProbe(Probe):
 class ModelProbe(Probe):
     name = "model"
 
-    def __init__(self, http: httpx.AsyncClient, settings: Settings) -> None:
-        super().__init__(settings.probe_timeout_seconds)
-        self._http = http
-        self._settings = settings
+    def __init__(self, provider: ModelProvider, timeout_seconds: float) -> None:
+        super().__init__(timeout_seconds)
+        self._provider = provider
 
     async def check(self) -> ProbeResult:
-        try:
-            response = await self._http.get(f"{self._settings.model_base_url}/api/tags")
-            response.raise_for_status()
-            models = {m["name"] for m in response.json().get("models", [])}
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
-            return ComponentStatus.OFFLINE, f"ollama unreachable ({type(exc).__name__})"
-        wanted = self._settings.model_name
-        if wanted in models or f"{wanted}:latest" in models:
-            return ComponentStatus.ONLINE, wanted
-        return ComponentStatus.DEGRADED, f"run: ollama pull {wanted}"
+        health = await self._provider.health()
+        return health.status, health.detail
