@@ -1,0 +1,189 @@
+# Local Muse stack. Run through the Makefile: it passes --env-file ../.env and the project name.
+name: local-muse
+
+x-app-env: &app-env
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/muse
+  TEMPORAL_ADDRESS: temporal:7233
+  CENTRIFUGO_API_URL: http://centrifugo:8000/api
+  CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?run make env}
+  CENTRIFUGO_TOKEN_SECRET: ${CENTRIFUGO_TOKEN_SECRET:?run make env}
+  LOCAL_MUSE_MODE: ${LOCAL_MUSE_MODE:-offline}
+  MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
+  MODEL_BASE_URL: ${MODEL_BASE_URL:-http://host.docker.internal:11434}
+  MODEL_NAME: ${MODEL_NAME:-qwen3:30b-a3b}
+  MODEL_CONTEXT_TOKENS: ${MODEL_CONTEXT_TOKENS:-32768}
+
+x-app-image: &app-image
+  image: local-muse-backend:local
+  build: ../backend
+
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 30"]
+  interval: 5s
+  timeout: 3s
+  retries: 6
+  start_period: 30s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?run make env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run make env}
+      POSTGRES_DB: muse
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    mem_limit: 2g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d muse"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    volumes:
+      - ./temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    mem_limit: 1536m
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      # Namespace exists only after auto-setup finishes, which is what workers need.
+      test: ["CMD-SHELL", "temporal operator namespace describe -n default --address temporal:7233 >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  temporal-ui:
+    image: temporalio/ui:2.39.0
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8233}:8080"
+    mem_limit: 256m
+    restart: unless-stopped
+    depends_on:
+      temporal: { condition: service_healthy }
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6
+    command: centrifugo -c /centrifugo/config.json
+    environment:
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_SECRET:?run make env}
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:?run make env}
+      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-8080} http://127.0.0.1:${WEB_PORT:-8080} http://localhost:5173
+    volumes:
+      - ./centrifugo/config.json:/centrifugo/config.json:ro
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    <<: *app-image
+    command: ["alembic", "upgrade", "head"]
+    environment: *app-env
+    mem_limit: 256m
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  backend:
+    <<: *app-image
+    environment: *app-env
+    mem_limit: 1g
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      centrifugo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    <<: *app-image
+    command: ["python", "-m", "muse.worker", "--role", "main"]
+    environment:
+      <<: *app-env
+      SANDBOXD_URL: http://sandboxd:8080
+      SANDBOXD_TOKEN: ${SANDBOXD_TOKEN:?run make env}
+    networks: [default, sandbox-control]
+    mem_limit: 2560m
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_healthy }
+      sandboxd: { condition: service_healthy }
+    healthcheck: *worker-healthcheck
+
+  worker-model:
+    <<: *app-image
+    command: ["python", "-m", "muse.worker", "--role", "model"]
+    environment: *app-env
+    mem_limit: 512m
+    restart: unless-stopped
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_healthy }
+    healthcheck: *worker-healthcheck
+
+  # The only container with the Docker socket. Reachable only from worker.
+  sandboxd:
+    image: local-muse-sandboxd:local
+    build: ../sandboxd
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SANDBOXD_TOKEN: ${SANDBOXD_TOKEN:?run make env}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [sandbox-control]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request as u; u.urlopen(u.Request('http://localhost:8080/health', headers={'Authorization': 'Bearer ' + os.environ['SANDBOXD_TOKEN']}), timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  web:
+    image: local-muse-web:local
+    build: ../apps/web
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+    mem_limit: 64m
+    restart: unless-stopped
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  default: {}
+  sandbox-control:
+    internal: true
+
+volumes:
+  postgres_data:

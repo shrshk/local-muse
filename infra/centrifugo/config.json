@@ -1,0 +1,13 @@
+{
+  "log": { "level": "info" },
+  "health": { "enabled": true },
+  "channel": {
+    "namespaces": [
+      { "name": "user" },
+      { "name": "conversation" },
+      { "name": "run" },
+      { "name": "topic" },
+      { "name": "browser" }
+    ]
+  }
+}
