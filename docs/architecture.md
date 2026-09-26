@@ -126,7 +126,7 @@ Docker Desktop VM target: 16 GB (currently 32 GB on this Mac; either is fine, 16
 | sandboxes | 4g each, max 2 concurrent |
 
 Steady state without sandboxes ≈ 8.5 GB. Ollama runs natively and is outside the VM
-(~20–24 GB for a 30B-A3B q4 model with 32k context).
+(qwen3.8:27b Q4_K_M: ~17 GB weights plus KV cache; measured in Phase 2).
 
 ## Auth
 

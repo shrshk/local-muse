@@ -22,7 +22,7 @@ Local model (optional until Phase 2):
 
 ```bash
 brew install ollama && ollama serve
-ollama pull qwen3:30b-a3b
+ollama pull qwen3.8:27b
 ```
 
 ## Development

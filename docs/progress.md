@@ -60,7 +60,7 @@ Tests:
 
 Known limitations:
 
-- Model tile shows offline until Ollama is installed and `qwen3:30b-a3b` is pulled.
+- Model tile needs Ollama running on the host with `MODEL_NAME` pulled.
 - No auth yet; realtime token endpoint is open on loopback (see architecture.md → Auth).
 - Workers register only a `ping` activity; no workflows until Phase 3.
 - Starlette warns that its TestClient's httpx backend is deprecated (sandboxd tests); harmless.

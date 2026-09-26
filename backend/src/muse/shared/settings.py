@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     local_muse_mode: Literal["offline", "hybrid", "cloud"] = "offline"
     model_provider: Literal["ollama"] = "ollama"
     model_base_url: str = "http://host.docker.internal:11434"
-    model_name: str = "qwen3:30b-a3b"
+    model_name: str = "qwen3.8:27b"
     model_context_tokens: int = 32768
 
     probe_timeout_seconds: float = 2.0
