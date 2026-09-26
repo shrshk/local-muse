@@ -65,6 +65,7 @@ Known limitations:
 - Workers register only a `ping` activity; no workflows until Phase 3.
 - Starlette warns that its TestClient's httpx backend is deprecated (sandboxd tests); harmless.
 
-## Open questions
+## Decisions log
 
-- Docker Desktop VM is 32 GB on this Mac; budget assumes 16 GB. Leave or lower?
+- 2026-09-26: Docker Desktop VM stays at 32 GB. It is a ceiling, not a reservation; revisit only on
+  memory pressure with the model loaded (measure in Phase 2).

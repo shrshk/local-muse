@@ -109,7 +109,10 @@ connection state, which proves the JWT path end to end.
 
 ## Memory budget
 
-Docker Desktop VM target: 16 GB (currently 32 GB on this Mac; either is fine, 16 is the budget).
+The Docker Desktop VM memory setting is a ceiling, not a reservation (the VM held 3.2 GB with a
+32 GB cap on 2026-09-26). Per-service limits below are the real control. The VM cap only matters
+if unbounded containers or the VM's page cache crowd the native model into swap. Kept at 32 GB;
+lower it only if memory pressure shows up with the model loaded.
 
 | Service | mem_limit |
 |---|---|
