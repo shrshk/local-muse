@@ -14,9 +14,10 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 6 Policy rules + approvals | done |
 | 7 Browser | done |
 | 8 Authenticated browser | done |
-| 9 Goals | not started |
+| 9 Goals | done |
 | 10 Telegram | not started |
 | 11 PWA / phone | not started |
+| 12 1Password CLI credentials | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -402,8 +403,49 @@ Known limitations:
 - One profile per user; Chromium locks it, so a second worker process could not share it.
 - Taint is per conversation and never cleared (conservative); a new conversation starts clean.
 
+## Phase 9 — Goals / scheduling
+
+Done 2026-09-27.
+
+What works:
+
+- Goals from chat (`goal.create`) or the Goals tab/API; one-shot via a durable Temporal timer,
+  recurring via a Temporal Schedule; cancel either.
+- `goal_checker` agent returns a comparable observation; trusted code decides notification
+  (one-shot always; condition flip to true; otherwise value change, first run = baseline).
+- Notifications table + `notification.created` on the user channel + event message in the
+  conversation. Goals tab: notifications (mark read), active goals, create form, finished goals.
+
+Acceptance evidence (live, `tests/integration/test_goals.py`):
+
+- One-shot goal due in 2 minutes; `docker compose restart` of every service during the wait; it
+  ran after its fire time and within the window, notified once, and posted an event message.
+- "Check the heading of example.com again tomorrow" → the model created a one-shot goal ~a day
+  out; its `goal-<id>` workflow is RUNNING on a timer; cancel → CANCELED.
+- Recurring every minute over a profile fact: baseline and unchanged runs → 0 notifications;
+  fact changed alpha → beta → exactly 1 notification; later unchanged run → still 1; cancel
+  deleted the Temporal Schedule.
+- 14 unit tests (timing validation, notify decision, tool refusals, checker toolset) + policy row.
+- Browser (headless Chrome, 390 px): create goal from the form, notification arrives, mark read,
+  no horizontal scroll, no console errors.
+
+Regression: full suite 47/48. The failure was the model-queue test itself: it sampled two
+workflows' pending activities one after the other, so a hand-off between them looked like two
+STARTED calls (the queue had a single poller). It now checks overlap from recorded history:
+every model call's scheduled/started/finished times across both workflows, no two intervals
+overlap, and one call queued behind the other. Rerun green.
+
+Known limitations:
+
+- Minimum interval is 1 minute; no cron expressions yet (intervals only).
+- `next_run_at` for recurring goals is an estimate (last run + interval).
+- A goal checking a logged-in page taints its conversation like any other run.
+
 ## Decisions log
 
+- 2026-09-27: Goals notify from structured values compared in trusted code, not from the model's
+  judgement of "meaningful"; a canonical `value` field makes runs comparable.
+- 2026-09-27: 1Password CLI credential filling is planned as Phase 12 (after the phone phase).
 - 2026-09-27: Taint is per conversation, not per argument; the model can launder page text
   through any argument, so only a scope-level mark is a real boundary.
 - 2026-09-27: Human-typed text bypasses Temporal history via an inbox row, because Update

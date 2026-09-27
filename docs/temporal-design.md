@@ -187,3 +187,24 @@ workflow durability.
 - `ConversationState.approval_timeout_s` / `TopicInput.approval_timeout_s` (default 7 days) set
   both the timer and the approval's `expires_at`.
 - Agents' output type includes `DeferredToolRequests`, so a paused run is a normal result.
+
+## Implementation (Phase 9): goals
+
+- `goals` row per goal; created by the owner (`POST /api/goals`, activated immediately) or by
+  the coordinator's `goal.create` tool (user-triggered turns only, not from topics; recorded as
+  `pending`, activated by the conversation workflow's `goal.activate_pending` activity after the
+  turn, like topics).
+- One-shot (`after_minutes` or `at`): `GoalWorkflow` `goal-<id>` sleeps on a Temporal timer
+  (`workflow.sleep(fire_at - now)`), then runs `GoalRunWorkflow` as a child. Cancel → the timer's
+  workflow is cancelled and the goal marked cancelled.
+- Recurring (`every_minutes`): a Temporal Schedule `goal-<id>` (interval spec, overlap SKIP)
+  starts `GoalRunWorkflow` per fire. Cancel deletes the schedule.
+- `GoalRunWorkflow`: loads the goal (skips unless active), runs the `goal_checker` agent
+  (structured `GoalObservation {value, condition_met, summary}`; no topic/goal tools), records
+  it, releases its browser session and sandbox. Approvals work inside a run (it has
+  `decide_approval`).
+- Notify decision (trusted code, `activities/goals.should_notify`): one-shot → always; with a
+  condition → only when `condition_met` flips to true; otherwise → when the normalized value
+  differs from the previous run (the first run is the baseline).
+- Scheduler (`modules/goals/goal_scheduler.py`) references workflows by type name, so the API
+  can activate goals without importing workflow code.

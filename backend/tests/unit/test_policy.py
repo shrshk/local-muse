@@ -190,3 +190,9 @@ async def test_authenticated_mutations_ignore_the_allowlist():
     )
     decision = await PolicyEngine(Allowlist("docs.python.org")).evaluate(action, make_ctx())
     assert decision.kind is APPROVE and decision.rule == "browser_auth_mutation"
+
+
+async def test_goal_create_is_a_local_assistant_action():
+    action = proposal("goal.create", risk=RiskClass.LOCAL_MUTATION)
+    decision = await PolicyEngine().evaluate(action, make_ctx())
+    assert decision.kind is ALLOW and decision.rule == "local_assistant"

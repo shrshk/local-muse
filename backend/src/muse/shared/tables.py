@@ -2,6 +2,7 @@
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -303,4 +304,44 @@ data_taint = Table(
     Column("classification", Text, nullable=False),
     Column("source", Text, nullable=False),
     Column("since", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+goals = Table(
+    "goals",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("objective", Text, nullable=False),
+    Column("condition", Text),
+    Column("kind", Text, nullable=False),
+    Column("fire_at", DateTime(timezone=True)),
+    Column("every_minutes", Integer),
+    Column("status", Text, nullable=False),
+    Column("last_value", Text),
+    Column("last_condition", Boolean),
+    Column("last_summary", Text),
+    Column("last_run_at", DateTime(timezone=True)),
+    Column("next_run_at", DateTime(timezone=True)),
+    Column("run_count", Integer, nullable=False, server_default=text("0")),
+    Column("notify_count", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Index("ix_goals_user_status", "user_id", "status"),
+)
+
+notifications = Table(
+    "notifications",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True)),
+    Column("goal_id", UUID(as_uuid=True)),
+    Column("kind", Text, nullable=False),
+    Column("title", Text, nullable=False),
+    Column("body", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("read_at", DateTime(timezone=True)),
+    Index("ix_notifications_user_created", "user_id", "created_at"),
 )

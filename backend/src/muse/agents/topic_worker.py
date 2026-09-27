@@ -13,7 +13,7 @@ from muse.agents.toolset import build_toolset
 from muse.tools.registry import ToolRegistry
 
 AGENT_NAME = "topic_worker"
-NO_TOPIC_TOOLS = frozenset({"topic.start"})
+NO_TOPIC_TOOLS = frozenset({"topic.start", "goal.create"})
 
 INSTRUCTIONS = """\
 You are a Local Muse background worker. You pursue exactly one objective, given below, without

@@ -158,3 +158,34 @@ export interface ProfileFact {
   source: 'user' | 'agent';
   updated_at: string;
 }
+
+export interface Goal {
+  id: string;
+  conversation_id: string;
+  title: string;
+  objective: string;
+  condition: string | null;
+  kind: 'once' | 'recurring';
+  fire_at: string | null;
+  every_minutes: number | null;
+  status: 'pending' | 'active' | 'completed' | 'cancelled';
+  last_value: string | null;
+  last_condition: boolean | null;
+  last_summary: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  run_count: number;
+  notify_count: number;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: string;
+  conversation_id: string | null;
+  goal_id: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}

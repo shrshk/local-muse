@@ -8,8 +8,10 @@ from muse.modules.auth.auth_handler import SESSION_COOKIE, AuthHandler, InvalidS
 from muse.modules.auth.auth_schema import Principal
 from muse.modules.browser.browser_handler import AllowlistHandler, BrowserHandler
 from muse.modules.conversations.conversations_handler import ConversationsHandler
+from muse.modules.goals.goals_handler import GoalsHandler
 from muse.modules.health.health_handler import HealthHandler
 from muse.modules.memory.memory_handler import ProfileMemoryHandler
+from muse.modules.notifications.notifications_handler import NotificationsHandler
 from muse.modules.realtime.realtime_handler import RealtimeHandler
 from muse.modules.topics.topics_handler import TopicsHandler
 
@@ -56,6 +58,16 @@ def browser_handler(request: Request) -> BrowserHandler:
 
 def allowlist_handler(request: Request) -> AllowlistHandler:
     handler: AllowlistHandler = request.app.state.allowlist_handler
+    return handler
+
+
+def goals_handler(request: Request) -> GoalsHandler:
+    handler: GoalsHandler = request.app.state.goals_handler
+    return handler
+
+
+def notifications_handler(request: Request) -> NotificationsHandler:
+    handler: NotificationsHandler = request.app.state.notifications_handler
     return handler
 
 

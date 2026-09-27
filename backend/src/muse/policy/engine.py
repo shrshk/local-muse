@@ -77,7 +77,7 @@ class PolicySources:
 ESCALATION = re.compile(r"buy|purchase|order|confirm|send|submit|pay|delete|remove|transfer", re.I)
 BROWSER_READS = {"browser.navigate", "browser.snapshot", "browser.screenshot", "browser.scroll"}
 BROWSER_MUTATIONS = {"browser.click", "browser.fill", "browser.press", "browser.download"}
-LOCAL_ASSISTANT_TOOLS = {"clock.now", "profile.remember", "topic.start"}
+LOCAL_ASSISTANT_TOOLS = {"clock.now", "profile.remember", "topic.start", "goal.create"}
 APPROVAL_SIDE_EFFECTS = {
     SideEffectClass.MESSAGE_SEND,
     SideEffectClass.REMOTE_UPDATE,

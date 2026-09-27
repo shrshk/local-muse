@@ -40,6 +40,7 @@ with workflow.unsafe.imports_passed_through():
         BrowserModeInput,
     )
     from muse.activities.conversation import ConversationActivities
+    from muse.activities.goals import ActivateGoalsInput, GoalActivities
     from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
     from muse.agents.coordinator import MAX_REQUESTS_PER_TURN
@@ -247,6 +248,12 @@ class ConversationWorkflow(PydanticAIWorkflow):
             retry_policy=PERSIST_RETRY,
         )
         await self._start_pending_topics()
+        await workflow.execute_activity_method(
+            GoalActivities.activate_pending,
+            ActivateGoalsInput(conversation_id=self._state.conversation_id),
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
         # Done before the final event, so a client reacting to it reads a finished state.
         self._running = None
         await self._publish("agent.message", turn, message_id=str(reply.id), seq=reply.seq)

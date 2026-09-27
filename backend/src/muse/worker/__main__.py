@@ -18,6 +18,7 @@ from temporalio.worker import Worker
 from muse.activities.approvals import ApprovalActivities
 from muse.activities.browser import BrowserActivities
 from muse.activities.conversation import ConversationActivities
+from muse.activities.goals import GoalActivities
 from muse.activities.sandbox import SandboxActivities
 from muse.activities.topics import TopicActivities
 from muse.agents.instances import AGENTS
@@ -25,6 +26,7 @@ from muse.agents.runtime import AgentRuntime, configure_agent_runtime
 from muse.browser.controller import BrowserController
 from muse.modules.artifacts.store import ArtifactStore
 from muse.modules.browser.taint import PostgresTaintStore
+from muse.modules.goals.goal_scheduler import GoalScheduler
 from muse.modules.health.probes import Probe, ProcessProbe, SandboxdProbe
 from muse.policy.engine import PolicyEngine
 from muse.realtime.publisher import RealtimePublisher
@@ -40,6 +42,7 @@ from muse.tools.specs import build_registry
 from muse.worker.heartbeat import HeartbeatReporter
 from muse.worker.interceptors import HeartbeatInterceptor
 from muse.workflows.conversation import ConversationWorkflow
+from muse.workflows.goals import GoalRunWorkflow, GoalWorkflow
 from muse.workflows.topic import TopicWorkflow
 
 logger = get_logger(__name__)
@@ -103,6 +106,7 @@ class WorkerProcess:
             SandboxActivities(engine, sandbox),
             ApprovalActivities(engine),
             BrowserActivities(engine, browser, publisher) if browser else None,
+            GoalActivities(engine, publisher, GoalScheduler(client, settings.task_queue_main)),
         )
         reporter = HeartbeatReporter(
             engine, self._probes(http), settings.heartbeat_interval_seconds
@@ -139,6 +143,7 @@ class WorkerProcess:
         sandboxes: SandboxActivities,
         approvals: ApprovalActivities,
         browsers: BrowserActivities | None,
+        goals: GoalActivities,
     ) -> Worker:
         if self._role == "model":
             # One local model: the queue serializes inference, no scheduler needed.
@@ -156,7 +161,7 @@ class WorkerProcess:
         return Worker(
             client,
             task_queue=self._settings.task_queue_main,
-            workflows=[ConversationWorkflow, TopicWorkflow],
+            workflows=[ConversationWorkflow, TopicWorkflow, GoalWorkflow, GoalRunWorkflow],
             activities=[
                 conversations.persist_message,
                 conversations.load_turn,
@@ -170,6 +175,11 @@ class WorkerProcess:
                 approvals.record_decision,
                 approvals.expire,
                 *browser_activities,
+                goals.activate_pending,
+                goals.load,
+                goals.record,
+                goals.record_failure,
+                goals.set_status,
             ],
             interceptors=[HeartbeatInterceptor()],
         )

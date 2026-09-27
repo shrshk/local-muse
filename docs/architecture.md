@@ -102,7 +102,7 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | 5 | `sandboxes`, `artifacts` (+ worker-only `artifacts` volume) |
 | 6 | `approvals`, `domain_allowlist`, `outbox` (demo external-write target) |
 | 7–8 | `browser_sessions`, `browser_frames`, `browser_input_inbox`, `data_taint` (+ worker-only `browser_profile` volume) |
-| 9 | `goals`, `notification_preferences` |
+| 9 | `goals`, `notifications` (`notification_preferences` with Telegram, Phase 10) |
 | — | `connector_accounts` (schema only, when credential plumbing lands) |
 
 ### Why `service_heartbeats`
@@ -197,3 +197,9 @@ Spec §18: single owner, password login, session cookie. Landed in Phase 2.
 - The user logs in through takeover: take control, navigate, click, type. Typed text is parked
   in `browser_input_inbox` by the API and popped (deleted) by the activity; the Temporal Update
   carries only the row id. The viewer shows a "logged-in profile" badge and a hidden typing box.
+
+## Notifications (Phase 9)
+
+`NotificationService` stores attention-worthy events in `notifications` and publishes
+`notification.created` on `user:<id>`. Goals that notify also post an `event` message into
+their conversation. Telegram delivery attaches to the same service in Phase 10.

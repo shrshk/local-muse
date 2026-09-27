@@ -1,5 +1,7 @@
 import type {
   AllowlistEntry,
+  AppNotification,
+  Goal,
   Approval,
   ConnectionToken,
   Conversation,
@@ -68,6 +70,11 @@ export const api = {
       decision,
       approval_key: approval.approval_key,
     }),
+  goals: () => request<Goal[]>('/api/goals'),
+  createGoal: (goal: Record<string, string | number | null>) => post<Goal>('/api/goals', goal),
+  cancelGoal: (id: string) => post<Goal>(`/api/goals/${id}/cancel`),
+  notifications: () => request<AppNotification[]>('/api/notifications'),
+  markRead: (id: string) => post<void>(`/api/notifications/${id}/read`),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
   subscribeBrowserToken: (sessionId: string) =>

@@ -142,3 +142,8 @@ button.link { border: none; background: none; color: var(--muted); padding: 4px;
 .browser__controls input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 6px 8px; }
 .fact__row { display: flex; justify-content: space-between; align-items: center; }
 .browser__badge { font-size: 0.75rem; color: var(--degraded); border: 1px solid var(--degraded); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+
+.fact--read { opacity: 0.7; }
+.goal-form__timing { display: flex; gap: 8px; align-items: center; }
+.goal-form__timing input { width: 90px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; }
+.form select, .goal-form__timing select { border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; font: inherit; color: inherit; }

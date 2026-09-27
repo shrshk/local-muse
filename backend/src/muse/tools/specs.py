@@ -12,7 +12,7 @@ from muse.policy.classification import (
     RiskClass,
     SideEffectClass,
 )
-from muse.tools.executors import browser, clock, outbox, profile, sandbox, topics
+from muse.tools.executors import browser, clock, goals, outbox, profile, sandbox, topics
 from muse.tools.registry import ToolRegistry
 from muse.tools.schema import (
     Classifier,
@@ -197,6 +197,18 @@ def build_registry() -> ToolRegistry:
                 args_model=topics.TopicStartArgs,
                 classify=_local_mutation,
                 executor=topics.start,
+            ),
+            ToolSpec(
+                name="goal.create",
+                description=(
+                    "Schedule a check for later: once (after_minutes or at) or recurring "
+                    "(every_minutes). With a condition, the user is notified when it becomes "
+                    "true; without one, when the result changes. E.g. 'check again tomorrow' = "
+                    "after_minutes 1440."
+                ),
+                args_model=goals.GoalCreateArgs,
+                classify=_local_mutation,
+                executor=goals.create,
             ),
             ToolSpec(
                 name="profile.remember",

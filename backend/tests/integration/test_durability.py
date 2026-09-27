@@ -1,8 +1,9 @@
 """Phase 3 acceptance: durable turns, streaming, reconnect state, Centrifugo outage, model queue."""
 
 import asyncio
+import datetime as dt
+import itertools
 import json
-import time
 from typing import Any
 
 import httpx
@@ -137,35 +138,52 @@ def describe(workflow_id: str) -> dict[str, Any]:
     return described
 
 
-def model_activity_states(workflow_id: str) -> list[str]:
-    return [
-        a.get("state", "")
-        for a in describe(workflow_id).get("pendingActivities", [])
-        if "model_request" in a.get("activityType", {}).get("name", "")
-    ]
+def parse_time(value: str) -> dt.datetime:
+    """Temporal's RFC 3339 times carry nanoseconds; Python keeps microseconds."""
+    whole, _, fraction = value.rstrip("Z").partition(".")
+    return dt.datetime.fromisoformat(f"{whole}.{(fraction or '0')[:6]:0<6}+00:00")
+
+
+def model_call_intervals(workflow_id: str) -> list[tuple[dt.datetime, dt.datetime, dt.datetime]]:
+    """(scheduled, started, finished) for every model-request attempt, from recorded history."""
+    out = compose(
+        "exec", "-T", "temporal", "temporal", "workflow", "show", "-w", workflow_id,
+        "--address", "temporal:7233", "-o", "json",
+    ).stdout  # fmt: skip
+    events = json.loads(out)["events"]
+    at = {e["eventId"]: parse_time(e["eventTime"]) for e in events}
+    model_scheduled = {
+        e["eventId"]
+        for e in events
+        if "model_request"
+        in e.get("activityTaskScheduledEventAttributes", {}).get("activityType", {}).get("name", "")
+    }
+    intervals = []
+    for e in events:
+        for key in ("activityTaskCompletedEventAttributes", "activityTaskFailedEventAttributes"):
+            attrs = e.get(key)
+            if attrs and attrs["scheduledEventId"] in model_scheduled:
+                intervals.append(
+                    (at[attrs["scheduledEventId"]], at[attrs["startedEventId"]], at[e["eventId"]])
+                )
+    return intervals
 
 
 async def test_model_queue_runs_one_inference_at_a_time():
     async with async_logged_in_client() as client:
         conversations = [await new_conversation(client) for _ in range(2)]
         await asyncio.gather(*(send(client, c, LONG_PROMPT) for c in conversations))
+        await asyncio.gather(*(wait_for_reply(client, c) for c in conversations))
 
-        max_started, saw_queued = 0, False
-        deadline = time.monotonic() + TURN_TIMEOUT
-        while time.monotonic() < deadline:
-            states = [s for c in conversations for s in model_activity_states(f"conv-{c}")]
-            started = sum(s.endswith("STARTED") for s in states)
-            max_started = max(max_started, started)
-            saw_queued = saw_queued or (
-                started == 1 and any(s.endswith("SCHEDULED") for s in states)
-            )
-            replies = [await state(client, c) for c in conversations]
-            if all(any(m["role"] == "assistant" for m in r["messages"]) for r in replies):
-                break
-            await asyncio.sleep(0.5)
-
-        assert max_started == 1, "two model activities ran at once"
-        assert saw_queued, "never observed a second model request waiting its turn"
+    calls = sorted(
+        (call for c in conversations for call in model_call_intervals(f"conv-{c}")),
+        key=lambda call: call[1],
+    )
+    assert len(calls) >= 2
+    for (_, _, finished), (_, next_started, _) in itertools.pairwise(calls):
+        assert next_started >= finished, "two model calls overlapped"
+    waited = [started - scheduled for scheduled, started, _ in calls]
+    assert max(waited) > dt.timedelta(seconds=2), "a model call queued behind the other"
 
 
 async def test_turn_survives_an_api_restart():

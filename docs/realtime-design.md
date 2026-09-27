@@ -89,3 +89,8 @@ The client fetches `GET /api/browser/{session_id}/frame?v=412` (JPEG). ~2 fps ca
 `browser.mode`. Subscription tokens via `POST /api/realtime/subscribe_token
 {browser_session_id}` after an ownership check. `browser.mode` is also published on the
 conversation channel so the chat refreshes.
+
+## User channel (Phase 9)
+
+`user:{id}` carries `notification.created {notification_id, kind}`. Goal notifications also
+publish `event.message` on the goal's conversation channel.
