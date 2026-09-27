@@ -133,10 +133,12 @@ Acceptance evidence (live, `make test-integration`, 21 tests):
 
 Known limitations:
 
-- Web UI streaming/reconnect not verified in a browser this phase (the browser automation
-  connection dropped); API-level reconnect contract is covered by tests.
 - Partial streamed text is not recoverable after a page reload mid-turn (tokens are ephemeral by
-  design); the UI shows "Thinking…" until the next token or the final message.
+  design); the UI shows the tokens that arrive after rejoining, prefixed with "…".
+
+Browser check (headless Chrome via playwright-core, 2026-09-27): reply streamed through 38 live
+states; tool chip shown; final bubble equals the stored reply; reload after the turn rebuilds the
+same timeline; reload mid-turn rejoins and ends on the stored reply; no console errors.
 - A failed turn is reported (`agent.failed`, `status.last_error`) but not stored as a message.
 - Retried idempotent tool calls record a second proposal with a new `action_id`.
 

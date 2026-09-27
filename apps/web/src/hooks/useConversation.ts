@@ -60,10 +60,11 @@ export function useConversation(conversationId: string | null) {
         case 'agent.token':
           setStreaming((current) => {
             const attempt = event.data.attempt ?? 1;
+            const text = event.data.text ?? '';
+            // Joined mid-turn (reload/reconnect): the start was never seen, so mark it partial.
+            if (!current || current.turnId !== turnId) return { turnId, attempt, text: `…${text}` };
             // A retried model call starts over; drop the partial text of the failed attempt.
-            if (!current || current.turnId !== turnId || attempt > current.attempt) {
-              return { turnId, attempt, text: event.data.text ?? '' };
-            }
+            if (attempt > current.attempt) return { turnId, attempt, text };
             return { ...current, text: current.text + (event.data.text ?? '') };
           });
           break;
