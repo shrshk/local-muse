@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     sandboxd_token: str = Field(min_length=32, repr=False)
     docker_url: str = "unix:///var/run/docker.sock"
-    docker_timeout_seconds: float = 5.0
+    docker_timeout_seconds: float = 30.0
+    sandbox_image: str = "local-muse-sandbox:1"
+    max_running_sandboxes: int = 2
 
 
 @lru_cache

@@ -9,7 +9,8 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 2 Local model + policy skeleton + chat | done |
 | 3 Durable conversation | done |
 | 4 Topics | done |
-| 5 sandboxd + sandbox | not started |
+| — Memory step (spec §15) | done |
+| 5 sandboxd + sandbox | done |
 | 6 Policy rules + approvals | not started |
 | 7 Browser | not started |
 | 8 Authenticated browser | not started |
@@ -185,8 +186,84 @@ Known limitations:
 - Topic memory is written at the end of a run, not checkpointed during it.
 - Cancelling a whole conversation turn (spec §12.6) is not implemented; topics can be cancelled.
 
+## Memory step (spec §15)
+
+Done 2026-09-27, between Phases 4 and 5.
+
+What works:
+
+- Profile memory: API + Memory tab (add/edit/delete), `profile.remember` tool, secret heuristic on
+  both paths, per-user privacy.
+- Token-budgeted history plus a system context block (profile facts, conversation summary, topic
+  summaries); topic workers see profile facts.
+- Compaction by a `summarizer` agent after the reply into `conversation_summaries`.
+
+Evidence (live):
+
+- API: CRUD, secret value 422, bad key 422, other user sees nothing, delete 204 then 404.
+- Model saved "home city is Lisbon" via `profile.remember` (source `agent`) and answered "Lisbon" in
+  a different conversation.
+- Budget 40 tokens: after the third turn a summary containing "Porto" was stored, and the model
+  answered "Porto" from it.
+- Browser at 390 px: add/edit/delete facts, secret rejected with the server message, no horizontal
+  scroll, no errors.
+
+Finding: the summarizer drops anything that reads like a secret ("code word") because its
+instructions forbid secrets. That is the intended bias; tests use plain facts.
+
+## Phase 5 — sandboxd + sandbox
+
+Done 2026-09-27.
+
+What works:
+
+- sandboxd full API (create/exec/files/list/stage/destroy/destroy-volume), constraints fixed in
+  one module, unknown request fields rejected, max 2 running containers with LRU eviction of idle
+  ones (volumes kept).
+- Sandbox image with the spec's preinstalled toolchain; uid 10001; `/workspace` volume per key.
+- `sandbox.*` tools via the gateway; per-tool activity timeout (`ToolSpec.timeout_s`).
+- Artifact store (Postgres metadata + worker-only volume) and trusted stager.
+- Topic cleanup releases the sandbox (container gone, volume kept); conversations release on idle.
+
+Acceptance evidence (automated, live sandboxes):
+
+- Isolation: uid 10001; CapEff 0; no docker socket; no host paths mounted; DNS, TCP and curl
+  fail; only `lo` is up and the route table is empty; env has no secrets; `/usr` and `/etc`
+  read-only; `/tmp` noexec; `/workspace` writable.
+- Persistence: a file written, container destroyed and recreated (new hostname), file still there.
+- Limits: pids.max 256 and 400 forks fail with EAGAIN; memory.max 4 GiB and a 5 GB allocation is
+  OOM-killed (cgroup oom_kill ≥ 1); exec timeout reports `timed_out`.
+- sandboxd refuses `privileged` in a create (422), path escapes via query and percent-encoded
+  path (400); a third sandbox evicts the least recently used idle one, whose file is still there
+  when it comes back. `docker inspect` confirms network none, read-only
+  rootfs, CapDrop ALL, no-new-privileges, PidsLimit 256, 4 GiB, one mount (`/workspace` volume).
+- Gateway: stage PUBLIC artifact → pandas reads it in the sandbox; AUTHENTICATED artifact refused;
+  package install refused; all four recorded in `actions`.
+- Model: a topic ran `sandbox.exec` in its own sandbox and reported 3**50; afterwards the
+  container was gone and the volume remained.
+- Worker has no Docker socket (Phase 1 tests).
+
+Findings:
+
+- Design flaw found by the full regression: a hard 2-sandbox limit let one idle conversation
+  sandbox (alive until the conversation idles out, 24 h) block every topic. Fixed with LRU
+  eviction of idle containers; refuse only when all are busy.
+- Docker Desktop leaves down stub tunnel interfaces (`tunl0`, `ip_vti0`, …) in every network
+  namespace even with `network_mode: none`; the tests assert they are down and there are no
+  routes rather than that they do not exist.
+- httpx normalizes `..` out of URL paths, so an escape test must go through the query parameter or
+  a percent-encoded path to reach sandboxd at all.
+
+Known limitations:
+
+- Nothing produces artifacts yet (browser/http tools arrive in Phase 7); staging is tested with
+  artifacts written by a test script.
+- Conversation sandboxes live until the conversation idles out (24 h).
+
 ## Decisions log
 
+- 2026-09-27: sandboxd keeps no database; the worker records `sandboxes` rows.
+- 2026-09-27: Memory step and Phase 5 share one commit (their changes overlap in shared files).
 - 2026-09-27: Starting a topic is split: the tool records intent (gateway, audited), the
   workflow starts the child. The executor never touches Temporal.
 - 2026-09-27: `ExecContext.trigger` (`user`/`event`) is trusted context the executors can check.

@@ -4,10 +4,14 @@ import datetime as dt
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 from sqlalchemy.ext.asyncio import AsyncEngine
+
+if TYPE_CHECKING:
+    from muse.modules.artifacts.store import ArtifactStore
+    from muse.sandbox.client import SandboxClient
 
 from muse.policy.classification import (
     Classification,
@@ -52,6 +56,8 @@ class ToolServices:
     """Trusted resources executors may use. Never reaches the model."""
 
     engine: AsyncEngine
+    sandbox: "SandboxClient | None" = None
+    artifacts: "ArtifactStore | None" = None
 
 
 Executor = Callable[[Any, ExecContext, ToolServices], Awaitable[JsonValue]]
@@ -67,6 +73,7 @@ class ToolSpec:
     executor: Executor = field(repr=False)
     retry: RetryPolicy = RetryPolicy()
     idempotent: bool = False
+    timeout_s: int = 60
 
     @property
     def model_name(self) -> str:

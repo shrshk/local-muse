@@ -4,10 +4,11 @@ import { api } from './api';
 import { disconnectRealtime } from './realtime';
 import { ChatPage } from './components/ChatPage';
 import { LoginForm } from './components/LoginForm';
+import { MemoryPage } from './components/MemoryPage';
 import { StatusPage } from './components/StatusPage';
 import type { Principal } from './types';
 
-type Tab = 'chat' | 'status';
+type Tab = 'chat' | 'memory' | 'status';
 
 export function App() {
   const [user, setUser] = useState<Principal | null | undefined>(undefined);
@@ -34,9 +35,9 @@ export function App() {
       <header className="shell__head">
         <strong>Local Muse</strong>
         <nav>
-          {(['chat', 'status'] as const).map((t) => (
+          {(['chat', 'memory', 'status'] as const).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t === 'chat' ? 'Chat' : 'Status'}
+              {t[0].toUpperCase() + t.slice(1)}
             </button>
           ))}
         </nav>
@@ -44,7 +45,9 @@ export function App() {
           Sign out
         </button>
       </header>
-      {tab === 'chat' ? <ChatPage /> : <StatusPage />}
+      {tab === 'chat' && <ChatPage />}
+      {tab === 'memory' && <MemoryPage />}
+      {tab === 'status' && <StatusPage />}
     </div>
   );
 }

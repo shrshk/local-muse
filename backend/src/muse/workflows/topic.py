@@ -15,15 +15,18 @@ with workflow.unsafe.imports_passed_through():
     import annotated_types  # noqa: F401  # pydantic imports it lazily; keep it out of the sandbox
     from pydantic_ai.durable_exec.temporal import PydanticAIWorkflow
     from pydantic_ai.exceptions import AgentRunError
+    from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
     from pydantic_ai.usage import UsageLimits
 
     from muse.activities.conversation import ConversationActivities
+    from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
     from muse.agents.deps import AgentDeps
     from muse.agents.instances import TOPIC_WORKER
     from muse.realtime.publisher import conversation_channel
     from muse.workflows.schema import (
         FinishTopicInput,
+        ProfileContextInput,
         PublishEventInput,
         TopicInput,
         TopicResult,
@@ -40,6 +43,18 @@ class TopicWorkflow(PydanticAIWorkflow):
     @workflow.run
     async def run(self, topic: TopicInput) -> TopicResult:
         self._topic = topic
+        try:
+            return await self._work(topic)
+        finally:
+            # Always, including on cancellation: the container goes, the workspace volume stays.
+            await workflow.execute_activity_method(
+                SandboxActivities.release,
+                ReleaseSandboxInput(sandbox_id=topic.topic_id),
+                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                retry_policy=ACTIVITY_RETRY,
+            )
+
+    async def _work(self, topic: TopicInput) -> TopicResult:
         await self._publish("topic.started")
         deps = AgentDeps(
             user_id=topic.user_id,
@@ -48,9 +63,19 @@ class TopicWorkflow(PydanticAIWorkflow):
             topic_id=topic.topic_id,
             actor_id=f"topic:{topic.topic_id}",
         )
+        profile = await workflow.execute_activity_method(
+            ConversationActivities.profile_context,
+            ProfileContextInput(user_id=topic.user_id),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=ACTIVITY_RETRY,
+        )
+        history: list[ModelMessage] = (
+            [ModelRequest(parts=[SystemPromptPart(content=profile)])] if profile else []
+        )
         try:
             result = await TOPIC_WORKER.run(
                 f"Objective: {topic.objective}",
+                message_history=history,
                 deps=deps,
                 usage_limits=UsageLimits(request_limit=topic.step_limit),
             )

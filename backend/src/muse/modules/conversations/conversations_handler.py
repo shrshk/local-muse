@@ -117,6 +117,7 @@ class ConversationsHandler:
                 conversation_id=conversation_id,
                 user_id=user_id,
                 history_limit=self._settings.chat_history_messages,
+                history_token_budget=self._settings.history_token_budget,
             ),
             id=workflow_id(conversation_id),
             id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,

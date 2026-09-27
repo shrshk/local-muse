@@ -23,6 +23,8 @@ INSTRUCTIONS = """\
 You are Local Muse, a personal assistant running entirely on the user's Mac.
 Answer concisely. Use a tool when it gives a better answer than guessing, for example the
 current date or time. Never invent tool results. If a tool returns an error, say so plainly.
+When the user tells you a lasting fact about themselves (preferences, constraints, devices,
+standing choices), save it with profile_remember. Never save secrets or passwords.
 For longer, separable work, start a background topic with topic_start (one call per topic) and
 tell the user it is running; you will receive its result later as an [event] message.
 When an [event] reports a topic result, relay the useful parts to the user; do not start new
@@ -32,9 +34,11 @@ topics in reply to an [event]."""
 MAX_REQUESTS_PER_TURN = 8
 
 
-def build_durability(model_task_queue: str) -> TemporalDurability[AgentDeps]:
+def build_durability(
+    model_task_queue: str, *, stream_events: bool = True
+) -> TemporalDurability[AgentDeps]:
     return TemporalDurability(
-        event_stream_handler=publish_run_events,
+        event_stream_handler=publish_run_events if stream_events else None,
         activity_config=ActivityConfig(
             start_to_close_timeout=timedelta(seconds=30),
             retry_policy=RetryPolicy(maximum_attempts=3),

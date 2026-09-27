@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help env create-user build up up-detached down restart logs ps psql migrate \
+.PHONY: help env create-user build sandbox-image up up-detached down restart logs ps psql migrate \
         test test-integration lint format typecheck check web-dev clean
 
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
@@ -17,13 +17,16 @@ env: ## Create .env from .env.example with random secrets (refuses to overwrite)
 create-user: ## Create a login user: make create-user USERNAME=owner (prompts for password)
 	$(COMPOSE) exec backend python -m muse.cli create-user --username $(or $(USERNAME),owner)
 
-build: ## Build all images
-	$(COMPOSE) build
+build: ## Build all images, including the sandbox image
+	$(COMPOSE) --profile images build
 
 up: ## Run the stack in the foreground
 	$(COMPOSE) up --build
 
-up-detached: ## Run the stack in the background and wait for health
+sandbox-image: ## Build the sandbox image sandboxd runs code in
+	$(COMPOSE) --profile images build sandbox-image
+
+up-detached: sandbox-image ## Run the stack in the background and wait for health
 	$(COMPOSE) up -d --build --wait
 
 down: ## Stop the stack

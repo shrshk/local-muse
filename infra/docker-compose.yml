@@ -125,6 +125,8 @@ services:
       <<: *app-env
       SANDBOXD_URL: http://sandboxd:8080
       SANDBOXD_TOKEN: ${SANDBOXD_TOKEN:?run make env}
+    volumes:
+      - artifacts:/data/artifacts   # worker-only; never mounted into sandboxes
     networks: [default, sandbox-control]
     mem_limit: 2560m
     restart: unless-stopped
@@ -152,6 +154,7 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SANDBOXD_TOKEN: ${SANDBOXD_TOKEN:?run make env}
+      SANDBOX_IMAGE: local-muse-sandbox:1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [sandbox-control]
@@ -182,6 +185,12 @@ services:
       timeout: 3s
       retries: 10
 
+  # Not a running service: builds the sandbox image sandboxd starts containers from.
+  sandbox-image:
+    image: local-muse-sandbox:1
+    build: ../sandbox
+    profiles: [images]
+
 networks:
   default: {}
   sandbox-control:
@@ -189,3 +198,4 @@ networks:
 
 volumes:
   postgres_data:
+  artifacts:

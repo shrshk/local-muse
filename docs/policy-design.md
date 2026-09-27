@@ -62,6 +62,9 @@ path: registry → policy → executor → audit.
 |---|---|---|
 | `clock.now` | READ_ONLY / NONE / PUBLIC, idempotent | ALLOW |
 | `topic.start` | LOCAL_MUTATION / NONE / PERSONAL | needs an explicit ALLOW rule, or the default sends it to REQUIRE_APPROVAL |
+| `profile.remember` | LOCAL_MUTATION / NONE / PERSONAL, idempotent | same as `topic.start` |
+| `sandbox.exec`, `sandbox.write_file`, `sandbox.stage`, `sandbox.stage_package` | LOCAL_MUTATION / LOCAL_FILE_WRITE / PERSONAL | rule 4 (`sandbox.*` ALLOW); staging AUTHENTICATED data needs approval (Phase 8) |
+| `sandbox.read_file`, `sandbox.list` | READ_ONLY / NONE / PERSONAL | rule 4 |
 
 ## Enums
 

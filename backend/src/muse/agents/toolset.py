@@ -21,7 +21,6 @@ from muse.tools.registry import ToolRegistry
 from muse.tools.schema import ToolIntent, ToolSpec
 
 TOOLSET_ID = "gateway"
-TOOL_TIMEOUT = timedelta(seconds=60)
 
 
 def build_toolset(
@@ -54,7 +53,7 @@ def _gateway_tool(spec: ToolSpec) -> Tool[AgentDeps]:
     attempts = spec.retry.max_attempts if spec.idempotent else 1
     tool.metadata = {
         "temporal": ActivityConfig(
-            start_to_close_timeout=TOOL_TIMEOUT,
+            start_to_close_timeout=timedelta(seconds=spec.timeout_s),
             retry_policy=RetryPolicy(maximum_attempts=attempts),
         )
     }

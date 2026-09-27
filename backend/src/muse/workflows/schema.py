@@ -24,6 +24,7 @@ class ConversationState(BaseModel):
     conversation_id: uuid.UUID
     user_id: uuid.UUID
     history_limit: int
+    history_token_budget: int = 8000
     turns_per_run: int = TURNS_PER_RUN
     pending: list[PendingTurn] = Field(default_factory=list)
 
@@ -59,8 +60,10 @@ class PersistedMessage(BaseModel):
 
 class LoadTurnInput(BaseModel):
     conversation_id: uuid.UUID
+    user_id: uuid.UUID
     message_id: uuid.UUID
     history_limit: int
+    token_budget: int
 
 
 class HistoryItem(BaseModel):
@@ -71,6 +74,29 @@ class HistoryItem(BaseModel):
 class TurnContext(BaseModel):
     prompt: str
     history: list[HistoryItem]
+    context: str | None = None
+    compact_up_to: int | None = None
+
+
+class CompactionInput(BaseModel):
+    conversation_id: uuid.UUID
+    up_to_seq: int
+    max_chars: int
+
+
+class CompactionSource(BaseModel):
+    previous_summary: str | None
+    transcript: str
+
+
+class SaveSummaryInput(BaseModel):
+    conversation_id: uuid.UUID
+    up_to_seq: int
+    content: str
+
+
+class ProfileContextInput(BaseModel):
+    user_id: uuid.UUID
 
 
 class PublishEventInput(BaseModel):

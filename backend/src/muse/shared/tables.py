@@ -8,6 +8,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    PrimaryKeyConstraint,
     Table,
     Text,
     UniqueConstraint,
@@ -140,5 +141,65 @@ topic_memory = Table(
     ),
     Column("document", JSONB, nullable=False),
     Column("version", Integer, nullable=False, server_default=text("1")),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+profile_memory = Table(
+    "profile_memory",
+    metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("key", Text, nullable=False),
+    Column("value", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("user_id", "key", name="pk_profile_memory"),
+)
+
+conversation_summaries = Table(
+    "conversation_summaries",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column(
+        "conversation_id",
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("up_to_seq", Integer, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("conversation_id", "up_to_seq", name="uq_conversation_summaries_seq"),
+)
+
+artifacts = Table(
+    "artifacts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column(
+        "conversation_id",
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("topic_id", UUID(as_uuid=True)),
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),
+    Column("size", BigInteger, nullable=False),
+    Column("sha256", Text, nullable=False),
+    Column("classification", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Index("ix_artifacts_conversation", "conversation_id"),
+)
+
+sandboxes = Table(
+    "sandboxes",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("topic_id", UUID(as_uuid=True)),
+    Column("volume_name", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

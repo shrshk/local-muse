@@ -4,6 +4,7 @@ import type {
   ConversationState,
   HealthReport,
   Principal,
+  ProfileFact,
   SendAck,
   Topic,
   TopicMemory,
@@ -50,6 +51,14 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ document, version }),
     }),
+  profileFacts: () => request<ProfileFact[]>('/api/profile/memory'),
+  putProfileFact: (key: string, value: string) =>
+    request<ProfileFact>(`/api/profile/memory/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    }),
+  deleteProfileFact: (key: string) =>
+    request<void>(`/api/profile/memory/${encodeURIComponent(key)}`, { method: 'DELETE' }),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
 };

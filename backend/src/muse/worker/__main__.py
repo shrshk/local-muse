@@ -6,6 +6,7 @@ model  model-request activities only, one at a time (queue model-inference)
 
 import argparse
 import asyncio
+import pathlib
 import signal
 from collections.abc import Callable
 from typing import Any
@@ -15,9 +16,11 @@ from pydantic_ai.durable_exec.temporal import TemporalDurability
 from temporalio.worker import Worker
 
 from muse.activities.conversation import ConversationActivities
+from muse.activities.sandbox import SandboxActivities
 from muse.activities.topics import TopicActivities
 from muse.agents.instances import AGENTS
 from muse.agents.runtime import AgentRuntime, configure_agent_runtime
+from muse.modules.artifacts.store import ArtifactStore
 from muse.modules.health.probes import Probe, ProcessProbe, SandboxdProbe
 from muse.policy.engine import PolicyEngine
 from muse.realtime.publisher import RealtimePublisher
@@ -64,17 +67,25 @@ class WorkerProcess:
         engine = create_engine(settings, pool_size=4)
         http = httpx.AsyncClient(timeout=settings.probe_timeout_seconds)
         publisher = RealtimePublisher(engine, http, settings)
+        sandbox = SandboxClient(http, settings)
         configure_agent_runtime(
             AgentRuntime(
                 registry=build_registry(),
                 policy=PolicyEngine(),
                 recorder=PostgresActionRecorder(engine),
-                services=ToolServices(engine=engine),
+                services=ToolServices(
+                    engine=engine,
+                    sandbox=sandbox if self._role == "main" else None,
+                    artifacts=ArtifactStore(engine, pathlib.Path(settings.artifacts_dir)),
+                ),
                 publisher=publisher,
             )
         )
         worker = self._build_worker(
-            client, ConversationActivities(engine, publisher), TopicActivities(engine)
+            client,
+            ConversationActivities(engine, publisher),
+            TopicActivities(engine),
+            SandboxActivities(engine, sandbox),
         )
         reporter = HeartbeatReporter(
             engine, self._probes(http), settings.heartbeat_interval_seconds
@@ -102,7 +113,11 @@ class WorkerProcess:
             raise exc
 
     def _build_worker(
-        self, client: Any, conversations: ConversationActivities, topics: TopicActivities
+        self,
+        client: Any,
+        conversations: ConversationActivities,
+        topics: TopicActivities,
+        sandboxes: SandboxActivities,
     ) -> Worker:
         if self._role == "model":
             # One local model: the queue serializes inference, no scheduler needed.
@@ -121,9 +136,13 @@ class WorkerProcess:
             activities=[
                 conversations.persist_message,
                 conversations.load_turn,
+                conversations.load_compaction,
+                conversations.save_summary,
+                conversations.profile_context,
                 conversations.publish_event,
                 topics.claim_pending,
                 topics.finish,
+                sandboxes.release,
             ],
             interceptors=[HeartbeatInterceptor()],
         )

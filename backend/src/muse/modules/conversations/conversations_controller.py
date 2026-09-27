@@ -101,6 +101,23 @@ class MessagesController:
         rows = (await self._conn.execute(stmt)).mappings().all()
         return [MessageView.model_validate(dict(r)) for r in rows]
 
+    async def between(
+        self, conversation_id: uuid.UUID, after_seq: int, before_seq: int, limit: int = 500
+    ) -> list[MessageView]:
+        """Messages with after_seq < seq < before_seq, newest `limit`, returned oldest first."""
+        stmt = (
+            select(messages)
+            .where(
+                messages.c.conversation_id == conversation_id,
+                messages.c.seq > after_seq,
+                messages.c.seq < before_seq,
+            )
+            .order_by(messages.c.seq.desc())
+            .limit(limit)
+        )
+        rows = (await self._conn.execute(stmt)).mappings().all()
+        return [MessageView.model_validate(dict(r)) for r in reversed(rows)]
+
     async def recent(
         self, conversation_id: uuid.UUID, limit: int, *, before_seq: int
     ) -> list[MessageView]:

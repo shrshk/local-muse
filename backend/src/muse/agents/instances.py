@@ -7,6 +7,7 @@ worker must register the same activity names.
 import httpx
 
 from muse.agents.coordinator import build_coordinator
+from muse.agents.summarizer import build_summarizer
 from muse.agents.topic_worker import build_topic_worker
 from muse.models.factory import build_provider
 from muse.shared.settings import get_settings
@@ -18,4 +19,5 @@ _registry = build_registry()
 
 COORDINATOR = build_coordinator(_provider.model(), _registry, _settings.task_queue_model)
 TOPIC_WORKER = build_topic_worker(_provider.model(), _registry, _settings.task_queue_model)
-AGENTS = (COORDINATOR, TOPIC_WORKER)
+SUMMARIZER = build_summarizer(_provider.model(), _settings.task_queue_model)
+AGENTS = (COORDINATOR, TOPIC_WORKER, SUMMARIZER)

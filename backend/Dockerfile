@@ -9,7 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
 
-RUN useradd --system --uid 10000 --home-dir /app muse
+RUN useradd --system --uid 10000 --home-dir /app muse \
+    && mkdir -p /data/artifacts && chown muse:muse /data/artifacts
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./

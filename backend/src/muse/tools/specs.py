@@ -8,7 +8,7 @@ from muse.policy.classification import (
     RiskClass,
     SideEffectClass,
 )
-from muse.tools.executors import clock, topics
+from muse.tools.executors import clock, profile, sandbox, topics
 from muse.tools.registry import ToolRegistry
 from muse.tools.schema import ExecContext, RetryPolicy, ToolSpec
 
@@ -24,6 +24,22 @@ def _read_only(_: Any, __: ExecContext) -> Classification:
 def _local_mutation(_: Any, __: ExecContext) -> Classification:
     return Classification(
         risk=RiskClass.LOCAL_MUTATION,
+        side_effect=SideEffectClass.NONE,
+        data_classification=DataClassification.PERSONAL,
+    )
+
+
+def _sandbox_write(_: Any, __: ExecContext) -> Classification:
+    return Classification(
+        risk=RiskClass.LOCAL_MUTATION,
+        side_effect=SideEffectClass.LOCAL_FILE_WRITE,
+        data_classification=DataClassification.PERSONAL,
+    )
+
+
+def _sandbox_read(_: Any, __: ExecContext) -> Classification:
+    return Classification(
+        risk=RiskClass.READ_ONLY,
         side_effect=SideEffectClass.NONE,
         data_classification=DataClassification.PERSONAL,
     )
@@ -50,6 +66,68 @@ def build_registry() -> ToolRegistry:
                 args_model=topics.TopicStartArgs,
                 classify=_local_mutation,
                 executor=topics.start,
+            ),
+            ToolSpec(
+                name="profile.remember",
+                description=(
+                    "Save a long-lived fact about the user (preferences, constraints, devices, "
+                    "standing choices) to profile memory. Never store secrets or passwords."
+                ),
+                args_model=profile.RememberArgs,
+                classify=_local_mutation,
+                executor=profile.remember,
+                idempotent=True,
+            ),
+            ToolSpec(
+                name="sandbox.exec",
+                description=(
+                    "Run a shell command in your private sandbox (Linux, no network, "
+                    f"preinstalled: {sandbox.PREINSTALLED}). Files persist in /workspace."
+                ),
+                args_model=sandbox.ExecArgs,
+                classify=_sandbox_write,
+                executor=sandbox.exec_cmd,
+                timeout_s=sandbox.MAX_EXEC_SECONDS + 30,
+            ),
+            ToolSpec(
+                name="sandbox.write_file",
+                description="Write a text file in the sandbox /workspace.",
+                args_model=sandbox.WriteFileArgs,
+                classify=_sandbox_write,
+                executor=sandbox.write_file,
+                idempotent=True,
+            ),
+            ToolSpec(
+                name="sandbox.read_file",
+                description="Read a text file from the sandbox /workspace.",
+                args_model=sandbox.PathArgs,
+                classify=_sandbox_read,
+                executor=sandbox.read_file,
+                idempotent=True,
+                retry=RetryPolicy(max_attempts=3),
+            ),
+            ToolSpec(
+                name="sandbox.list",
+                description="List a directory in the sandbox /workspace.",
+                args_model=sandbox.PathArgs,
+                classify=_sandbox_read,
+                executor=sandbox.list_dir,
+                idempotent=True,
+                retry=RetryPolicy(max_attempts=3),
+            ),
+            ToolSpec(
+                name="sandbox.stage",
+                description="Copy an artifact you obtained earlier into /workspace/incoming/.",
+                args_model=sandbox.StageArgs,
+                classify=_sandbox_write,
+                executor=sandbox.stage,
+            ),
+            ToolSpec(
+                name="sandbox.stage_package",
+                description="Install a package into the sandbox (not available in this version).",
+                args_model=sandbox.StagePackageArgs,
+                classify=_sandbox_write,
+                executor=sandbox.stage_package,
             ),
         ]
     )

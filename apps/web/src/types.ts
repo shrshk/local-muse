@@ -110,3 +110,10 @@ export interface RealtimeEvent {
   ts: string;
   data: { turn_id?: string; text?: string; attempt?: number; reason?: string; [key: string]: Json | undefined };
 }
+
+export interface ProfileFact {
+  key: string;
+  value: string;
+  source: 'user' | 'agent';
+  updated_at: string;
+}

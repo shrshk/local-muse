@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     sandboxd_url: str = "http://sandboxd:8080"
     sandboxd_token: str = Field(default="", repr=False)
+    artifacts_dir: str = "/data/artifacts"
 
     local_muse_mode: Literal["offline", "hybrid", "cloud"] = "offline"
     model_provider: Literal["ollama"] = "ollama"
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     model_context_tokens: int = 32768
     model_timeout_seconds: float = 600.0
     chat_history_messages: int = 20
+    history_token_budget: int = 8000
 
     probe_timeout_seconds: float = 2.0
     heartbeat_interval_seconds: float = 10.0

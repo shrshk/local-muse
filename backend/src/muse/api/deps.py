@@ -7,6 +7,7 @@ from muse.modules.auth.auth_handler import SESSION_COOKIE, AuthHandler, InvalidS
 from muse.modules.auth.auth_schema import Principal
 from muse.modules.conversations.conversations_handler import ConversationsHandler
 from muse.modules.health.health_handler import HealthHandler
+from muse.modules.memory.memory_handler import ProfileMemoryHandler
 from muse.modules.realtime.realtime_handler import RealtimeHandler
 from muse.modules.topics.topics_handler import TopicsHandler
 
@@ -33,6 +34,11 @@ def conversations_handler(request: Request) -> ConversationsHandler:
 
 def topics_handler(request: Request) -> TopicsHandler:
     handler: TopicsHandler = request.app.state.topics_handler
+    return handler
+
+
+def profile_memory_handler(request: Request) -> ProfileMemoryHandler:
+    handler: ProfileMemoryHandler = request.app.state.profile_memory_handler
     return handler
 
 

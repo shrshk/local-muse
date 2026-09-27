@@ -25,20 +25,23 @@ with workflow.unsafe.imports_passed_through():
         ModelMessage,
         ModelRequest,
         ModelResponse,
+        SystemPromptPart,
         TextPart,
         UserPromptPart,
     )
     from pydantic_ai.usage import UsageLimits
 
     from muse.activities.conversation import ConversationActivities
+    from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
     from muse.agents.coordinator import MAX_REQUESTS_PER_TURN
     from muse.agents.deps import AgentDeps
-    from muse.agents.instances import COORDINATOR
+    from muse.agents.instances import COORDINATOR, SUMMARIZER
     from muse.agents.topic_worker import DEFAULT_STEP_LIMIT
     from muse.realtime.publisher import conversation_channel
     from muse.workflows.schema import (
         ClaimTopicsInput,
+        CompactionInput,
         ConversationState,
         ConversationStatus,
         HistoryItem,
@@ -46,6 +49,7 @@ with workflow.unsafe.imports_passed_through():
         PendingTurn,
         PersistMessageInput,
         PublishEventInput,
+        SaveSummaryInput,
         SendMessageAck,
         SendMessageInput,
         TopicInput,
@@ -63,7 +67,7 @@ PUBLISH_RETRY = RetryPolicy(maximum_attempts=3)
 
 @workflow.defn(name="ConversationWorkflow")
 class ConversationWorkflow(PydanticAIWorkflow):
-    __pydantic_ai_agents__ = (COORDINATOR,)
+    __pydantic_ai_agents__ = (COORDINATOR, SUMMARIZER)
 
     @workflow.init
     def __init__(self, state: ConversationState) -> None:
@@ -83,6 +87,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
             except TimeoutError:
                 await workflow.wait_condition(workflow.all_handlers_finished)
                 if not self._queue and not self._active_topics:
+                    await self._release_sandbox()
                     return
                 continue
             turn = self._queue.pop(0)
@@ -131,8 +136,10 @@ class ConversationWorkflow(PydanticAIWorkflow):
             ConversationActivities.load_turn,
             LoadTurnInput(
                 conversation_id=self._state.conversation_id,
+                user_id=self._state.user_id,
                 message_id=turn.message_id,
                 history_limit=self._state.history_limit,
+                token_budget=self._state.history_token_budget,
             ),
             start_to_close_timeout=PERSIST_TIMEOUT,
             retry_policy=PERSIST_RETRY,
@@ -146,7 +153,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
         try:
             result = await COORDINATOR.run(
                 context.prompt,
-                message_history=to_model_history(context.history),
+                message_history=with_context(context.context, to_model_history(context.history)),
                 deps=deps,
                 usage_limits=UsageLimits(request_limit=MAX_REQUESTS_PER_TURN),
             )
@@ -173,6 +180,50 @@ class ConversationWorkflow(PydanticAIWorkflow):
         # Done before the final event, so a client reacting to it reads a finished state.
         self._running = None
         await self._publish("agent.message", turn, message_id=str(reply.id), seq=reply.seq)
+        if context.compact_up_to is not None:
+            await self._compact(context.compact_up_to)
+
+    async def _compact(self, up_to_seq: int) -> None:
+        """Summarize turns that fell out of the history window. Best effort: a failure only
+        means the next turn sees less history."""
+        source = await workflow.execute_activity_method(
+            ConversationActivities.load_compaction,
+            CompactionInput(
+                conversation_id=self._state.conversation_id,
+                up_to_seq=up_to_seq,
+                max_chars=self._state.history_token_budget * 8,
+            ),
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
+        if not source.transcript:
+            return
+        prompt = (
+            f"Previous summary:\n{source.previous_summary or '(none)'}\n\n"
+            f"New messages:\n{source.transcript}\n\nWrite the updated summary."
+        )
+        deps = AgentDeps(
+            user_id=self._state.user_id,
+            conversation_id=self._state.conversation_id,
+            turn_id=workflow.uuid4(),
+            actor_id="summarizer",
+            trigger="event",
+        )
+        try:
+            result = await SUMMARIZER.run(prompt, deps=deps)
+        except (AgentRunError, ActivityError) as exc:
+            workflow.logger.warning("compaction_failed", extra={"error": type(exc).__name__})
+            return
+        await workflow.execute_activity_method(
+            ConversationActivities.save_summary,
+            SaveSummaryInput(
+                conversation_id=self._state.conversation_id,
+                up_to_seq=up_to_seq,
+                content=result.output,
+            ),
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
 
     async def _start_pending_topics(self) -> None:
         claimed = await workflow.execute_activity_method(
@@ -259,6 +310,14 @@ class ConversationWorkflow(PydanticAIWorkflow):
         except ActivityError:
             workflow.logger.warning("realtime_event_dropped", extra={"event_type": event_type})
 
+    async def _release_sandbox(self) -> None:
+        await workflow.execute_activity_method(
+            SandboxActivities.release,
+            ReleaseSandboxInput(sandbox_id=self._state.conversation_id),
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
+
     def _should_continue_as_new(self) -> bool:
         # Children belong to this run; wait until none are active.
         if self._active_topics:
@@ -281,3 +340,9 @@ def to_model_history(history: list[HistoryItem]) -> list[ModelMessage]:
 
 def as_prompt(item: HistoryItem) -> str:
     return f"[event] {item.content}" if item.role == "event" else item.content
+
+
+def with_context(context: str | None, history: list[ModelMessage]) -> list[ModelMessage]:
+    if not context:
+        return history
+    return [ModelRequest(parts=[SystemPromptPart(content=context)]), *history]

@@ -69,8 +69,9 @@ backend/src/muse/
   workflows/      ConversationWorkflow + payload schemas
   activities/     conversation persistence / publish activities
   realtime/       Centrifugo publisher (seq from Postgres)
+  memory/         context construction (token budget), secret heuristic
   # later phases, per spec §26:
-  browser/ notifications/ memory/
+  browser/ notifications/
 sandboxd/src/sandboxd/   separate package and image
 apps/web/                Vite + React + TypeScript PWA
 infra/                   compose, centrifugo, temporal, nginx config
@@ -96,8 +97,8 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | 2 | `users`, `conversations`, `messages`, `actions`, `audit_events` |
 | 3 | `realtime_channel_seqs` |
 | 4 | `topics`, `topic_memory` |
-| memory step | `profile_memory`, `conversation_summaries` (deferred from Phase 4; see progress) |
-| 5 | `sandboxes`, `artifacts` |
+| memory step | `profile_memory`, `conversation_summaries` |
+| 5 | `sandboxes`, `artifacts` (+ worker-only `artifacts` volume) |
 | 6 | `approvals`, `domain_allowlist` |
 | 7–8 | `browser_sessions` |
 | 9 | `goals`, `notification_preferences` |
@@ -152,3 +153,18 @@ Spec §18: single owner, password login, session cookie. Landed in Phase 2.
   no audience) never works as a session. No sessions table: rotating the secret logs everyone out.
 - Public endpoints: `/api/health*`, `/api/auth/login`. Everything else needs the cookie.
 - CSRF: `SameSite=Strict` plus JSON-only bodies. Tailscale is the perimeter, not the auth.
+
+## Memory and context (spec §15)
+
+- **Profile memory** (`profile_memory`, key/value per user, `source` user|agent). Editable in the
+  Memory tab and via `/api/profile/memory`; the coordinator can add facts with the
+  `profile.remember` tool (gateway, LOCAL_MUTATION class). Keys are constrained; values that
+  look like secrets are refused (`memory/secrets.py`, heuristic, documented as incomplete).
+- **Turn context** (`load_turn`): a system block with profile facts, the latest conversation
+  summary and topic summaries, then history since that summary selected newest-first within
+  `HISTORY_TOKEN_BUDGET` (default 8000 est. tokens, ~4 chars/token) and `CHAT_HISTORY_MESSAGES`.
+  Topic workers get the profile facts.
+- **Compaction**: when messages fall out of the window, the workflow runs the `summarizer` agent
+  (model queue, no tools, no token streaming) after the reply and stores
+  `conversation_summaries(up_to_seq, content)`. Later turns start history after `up_to_seq`.
+  Best effort: a failed summary only shortens context.
