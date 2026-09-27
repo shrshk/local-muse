@@ -15,7 +15,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 7 Browser | done |
 | 8 Authenticated browser | done |
 | 9 Goals | done |
-| 10 Telegram | not started |
+| 10 Telegram | done |
 | 11 PWA / phone | not started |
 | 12 1Password CLI credentials | planned (user request) |
 
@@ -316,7 +316,7 @@ Test-design fix: the sandbox fork-bomb check left ~255 sleepers holding the pid 
 Known limitations:
 
 - Domain allowlist has no UI yet (Phase 7, where browser tools use it).
-- Approvals are decided in the web UI only; Telegram buttons arrive in Phase 10.
+- Approvals were decided in the web UI only until Phase 10 added Telegram buttons.
 
 ## Phase 7 — Browser
 
@@ -441,8 +441,47 @@ Known limitations:
 - `next_run_at` for recurring goals is an estimate (last run + interval).
 - A goal checking a logged-in page taints its conversation like any other run.
 
+## Phase 10 — Telegram
+
+Done 2026-09-27. Design: `architecture.md` → Telegram.
+
+What works:
+
+- Long-polling bot inside the backend, off unless all three `TELEGRAM_*` keys are set.
+- Notifications (goal results, approval requests) delivered to the owner chat; the
+  `notifications` table is the outbox, so a restart resends nothing and loses nothing.
+- Approve/Deny buttons decide approvals through the same handler as the web UI; a workflow
+  paused on approval resumes.
+- `/status`, `/topics`, `/cancel <prefix>`. Unknown chats are ignored and audited.
+
+Acceptance evidence (live, `tests/integration/test_telegram.py`, against a fake Bot API in a
+test-only Compose overlay, `infra/docker-compose.telegram-test.yml`):
+
+- Chat asks for an outbox send → approval message with buttons reaches chat 111 → Approve
+  callback → "Approved.", the approval is APPROVED with `channel=telegram`, exactly one outbox
+  row, the message is edited; a second identical callback answers "Already decided" and the
+  outbox still has one row.
+- Message and callback from chat 999 → no reply, audit row `telegram.ignored|telegram:999`.
+- `/status` answers from the owner chat; a forged callback (nil approval id) answers
+  "Not found." and changes nothing.
+- Unit: callback encode/parse round trip and 64-byte limit, malformed callbacks, enable rules,
+  token never in `TelegramError`, inline keyboard shape. Compose boundary test: only `web` and
+  `temporal-ui` publish ports.
+
+Not checked: real Telegram (needs the owner's bot token and chat id — left to the user).
+
+Regression: full integration suite 51/51 green (29.5 min); unit 167, lint and mypy clean.
+
+Known limitations:
+
+- One owner per deployment; `/cancel` matches topic id prefixes only.
+- Notifications older than 60 minutes when Telegram comes online are not sent.
+- No per-kind notification preferences yet.
+
 ## Decisions log
 
+- 2026-09-27: Telegram uses long polling inside the backend, not a webhook, so there is still no
+  inbound port. The notifications table doubles as the outbox instead of a new table.
 - 2026-09-27: Goals notify from structured values compared in trusted code, not from the model's
   judgement of "meaningful"; a canonical `value` field makes runs comparable.
 - 2026-09-27: 1Password CLI credential filling is planned as Phase 12 (after the phone phase).

@@ -31,3 +31,9 @@ class AuditController:
                 payload=payload,
             )
         )
+
+    async def record_raw(self, event_type: str, actor: str, payload: dict[str, Any]) -> None:
+        """For inbound events with no known user (e.g. a Telegram chat that is not allowed)."""
+        await self._conn.execute(
+            insert(audit_events).values(event_type=event_type, actor=actor, payload=payload)
+        )

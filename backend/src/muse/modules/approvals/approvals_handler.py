@@ -61,7 +61,11 @@ class ApprovalsHandler:
         return approval
 
     async def decide(
-        self, approval_id: uuid.UUID, user: Principal, request: DecisionRequest
+        self,
+        approval_id: uuid.UUID,
+        user: Principal,
+        request: DecisionRequest,
+        channel: str = "web",
     ) -> DecisionResult:
         async with self._engine.connect() as conn:
             controller = ApprovalsController(conn)
@@ -81,7 +85,7 @@ class ApprovalsHandler:
             approval_key=request.approval_key,
             approved=request.decision == "approve",
             decided_by=user.username,
-            channel="web",
+            channel=channel,
         )
         applied = False
         try:

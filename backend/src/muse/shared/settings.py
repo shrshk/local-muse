@@ -43,9 +43,30 @@ class Settings(BaseSettings):
     history_token_budget: int = 8000
     approval_timeout_s: int = 7 * 24 * 3600
 
+    # Telegram (Phase 10). Disabled unless a token, allowed chats and an owner are all set.
+    telegram_bot_token: str = Field(default="", repr=False)
+    telegram_allowed_chat_ids: str = ""  # comma-separated
+    telegram_owner_username: str = ""
+    telegram_api_base: str = "https://api.telegram.org"
+    telegram_poll_timeout_s: int = 25
+
     probe_timeout_seconds: float = 2.0
     heartbeat_interval_seconds: float = 10.0
     heartbeat_stale_seconds: float = 30.0
+
+
+def allowed_chat_ids(settings: Settings) -> frozenset[int]:
+    return frozenset(
+        int(part) for part in settings.telegram_allowed_chat_ids.split(",") if part.strip()
+    )
+
+
+def telegram_enabled(settings: Settings) -> bool:
+    return bool(
+        settings.telegram_bot_token
+        and allowed_chat_ids(settings)
+        and settings.telegram_owner_username
+    )
 
 
 @lru_cache

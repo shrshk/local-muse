@@ -94,3 +94,9 @@ def test_browser_profile_and_artifacts_live_only_in_the_worker(config: dict[str,
             if v.get("type") == "volume" and v.get("source") == volume
         }
         assert holders == {"worker"}, (volume, holders)
+
+
+def test_no_inbound_ports_beyond_the_ui(config: dict[str, Any]):
+    """Telegram is long-polling (outbound); the backend listens on no published port."""
+    published = {name for name, svc in config["services"].items() if svc.get("ports")}
+    assert published == {"web", "temporal-ui"}

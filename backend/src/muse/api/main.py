@@ -1,5 +1,6 @@
 """FastAPI app. Routers are transport only; handlers own the logic."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -30,9 +31,12 @@ from muse.modules.memory.memory_handler import ProfileMemoryHandler
 from muse.modules.notifications.notifications_handler import NotificationsHandler
 from muse.modules.realtime.realtime_handler import RealtimeHandler
 from muse.modules.topics.topics_handler import TopicsHandler
+from muse.notifications.telegram_bot import TelegramBot
+from muse.notifications.telegram_client import TelegramClient
+from muse.notifications.telegram_service import TelegramService
 from muse.shared.db import create_engine
 from muse.shared.logger import configure_logging, get_logger
-from muse.shared.settings import get_settings
+from muse.shared.settings import allowed_chat_ids, get_settings, telegram_enabled
 from muse.shared.temporal import TemporalClientProvider
 
 settings = get_settings()
@@ -69,8 +73,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.allowlist_handler = AllowlistHandler(engine)
     app.state.goals_handler = GoalsHandler(engine, temporal, settings)
     app.state.notifications_handler = NotificationsHandler(engine)
-    logger.info("backend_ready", model=settings.model_name, mode=settings.local_muse_mode)
+    telegram_stop = asyncio.Event()
+    telegram_task = None
+    if telegram_enabled(settings):
+        client = TelegramClient(http, settings)
+        chats = allowed_chat_ids(settings)
+        bot = TelegramBot(
+            engine,
+            client,
+            chats,
+            settings.telegram_owner_username,
+            app.state.approvals_handler,
+            app.state.topics_handler,
+        )
+        service = TelegramService(engine, client, bot, chat_id=min(chats))
+        telegram_task = asyncio.create_task(service.run(telegram_stop))
+    logger.info(
+        "backend_ready",
+        model=settings.model_name,
+        mode=settings.local_muse_mode,
+        telegram=telegram_task is not None,
+    )
     yield
+    telegram_stop.set()
+    if telegram_task is not None:
+        await telegram_task
     await provider.aclose()
     await http.aclose()
     await engine.dispose()

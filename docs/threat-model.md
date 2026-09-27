@@ -49,4 +49,6 @@ PRIVILEGED
 - Authenticated page content that the agent reads is in Temporal history (activity results) and
   in model context, like any tool output. Only human-typed text is kept out of history.
 - Conversation summaries may paraphrase authenticated content; they are not verbatim copies.
+- Telegram trusts the chat id Telegram reports; a stolen phone with the chat open can approve.
+  Messages show only the action summary, never page content or secrets.
 - Login has no rate limiting yet; the perimeter is loopback now and Tailscale in Phase 11.

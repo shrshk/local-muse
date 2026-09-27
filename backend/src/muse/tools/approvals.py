@@ -13,6 +13,7 @@ from muse.modules.approvals.approvals_controller import (
     default_expiry,
 )
 from muse.modules.approvals.approvals_schema import ApprovalStatus
+from muse.modules.notifications.notifications_controller import NotificationsController
 from muse.tools.schema import ActionProposal
 
 SUMMARY_LIMIT = 500
@@ -64,7 +65,7 @@ class PostgresApprovalStore:
         self, proposal: ActionProposal, reason: str, workflow_id: str, ttl_seconds: int
     ) -> uuid.UUID:
         async with self._engine.begin() as conn:
-            return await ApprovalsController(conn).create(
+            approval_id = await ApprovalsController(conn).create(
                 action_id=proposal.action_id,
                 approval_key=proposal.approval_key,
                 user_id=proposal.user_id,
@@ -77,6 +78,16 @@ class PostgresApprovalStore:
                 summary=summarize(proposal, reason),
                 expires_at=default_expiry(ttl_seconds),
             )
+            # Same transaction: an approval always has its notification (Telegram outbox).
+            await NotificationsController(conn).create(
+                proposal.user_id,
+                "approval",
+                "Approval needed",
+                summarize(proposal, reason),
+                conversation_id=proposal.conversation_id,
+                approval_id=approval_id,
+            )
+            return approval_id
 
     async def consume(self, approval_id: uuid.UUID) -> bool:
         async with self._engine.begin() as conn:

@@ -30,9 +30,10 @@ class NotificationService:
         body: str,
         conversation_id: uuid.UUID | None = None,
         goal_id: uuid.UUID | None = None,
+        approval_id: uuid.UUID | None = None,
     ) -> NotificationView:
         return await NotificationsController(conn).create(
-            user_id, kind, title, body, conversation_id, goal_id
+            user_id, kind, title, body, conversation_id, goal_id, approval_id
         )
 
     async def announce(self, notification: NotificationView, user_id: uuid.UUID) -> None:

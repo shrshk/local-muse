@@ -78,6 +78,18 @@ class TopicsController:
         row = (await self._conn.execute(stmt)).mappings().first()
         return TopicView.model_validate(dict(row)) if row else None
 
+    async def running_for_user(self, user_id: uuid.UUID) -> list[TopicView]:
+        stmt = (
+            select(topics)
+            .where(
+                topics.c.user_id == user_id,
+                topics.c.status.in_([s.value for s in ACTIVE_STATUSES]),
+            )
+            .order_by(topics.c.created_at)
+        )
+        rows = (await self._conn.execute(stmt)).mappings().all()
+        return [TopicView.model_validate(dict(r)) for r in rows]
+
     async def list_for_conversation(
         self, conversation_id: uuid.UUID, user_id: uuid.UUID
     ) -> list[TopicView]:
