@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from muse.sandbox.client import SandboxClient
 
 from muse.policy.classification import (
+    BrowserContext,
     Classification,
     DataClassification,
     RiskClass,
@@ -38,12 +39,18 @@ class ExecContext:
     actor_id: str = "coordinator"
     # What started this run: a user message, or an event (e.g. a topic result being relayed).
     trigger: Literal["user", "event"] = "user"
+    # The workflow that waits on approvals for this run; None outside workflows.
+    workflow_id: str | None = None
+    approval_ttl_s: int = 7 * 24 * 3600
+    # Set by the gateway for the executing action; executors use it as an idempotency key.
+    action_id: uuid.UUID | None = None
 
 
 class ToolResult(BaseModel):
     ok: bool
     output: JsonValue = None
     error: str | None = None
+    pending_approval: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -99,3 +106,5 @@ class ActionProposal(BaseModel):
     destination: str | None
     credential_ref: str | None
     created_at: dt.datetime
+    browser_context: BrowserContext | None = None
+    element_name: str | None = None

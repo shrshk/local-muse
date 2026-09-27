@@ -11,7 +11,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 4 Topics | done |
 | — Memory step (spec §15) | done |
 | 5 sandboxd + sandbox | done |
-| 6 Policy rules + approvals | not started |
+| 6 Policy rules + approvals | done |
 | 7 Browser | not started |
 | 8 Authenticated browser | not started |
 | 9 Goals | not started |
@@ -260,8 +260,70 @@ Known limitations:
   artifacts written by a test script.
 - Conversation sandboxes live until the conversation idles out (24 h).
 
+## Phase 6 — Policy rules + approvals
+
+Done 2026-09-27.
+
+What works:
+
+- The §7 rule table as ordered rules, including browser rows (for Phase 7 tools), domain
+  allowlist lookup and the escalation heuristic; the matching rule is logged per call.
+- Approvals bound to `approval_key`: gateway records PENDING approvals, workflows wait durably
+  (PydanticAI deferred tools), decisions arrive as a Temporal Update, approved calls run once under
+  the original `action_id`, expiry via the workflow timer.
+- `outbox.send` EXTERNAL_WRITE stub tool (idempotent on `action_id`).
+- Web: inline approval card in the chat, Approvals tab (pending + recent decisions).
+
+Acceptance evidence (live, `tests/integration/test_approvals.py`):
+
+- READ_ONLY `clock.now` executed without approval; `outbox.send` blocked with a PENDING approval
+  showing the exact recipient and body; the workflow reported it was waiting.
+- `docker compose restart` (every service) → the same approval still pending, the same wait.
+- Approving with a different `approval_key` → 409; another user → 404; unknown id → 404.
+- Approve → `changed: true`; second approve → 200 `changed: false`, still APPROVED.
+- After resume: exactly one outbox row, `clock.now` still executed once (no redo), one assistant
+  reply, audit trail `action.proposed, action.decided, approval.requested, …, approval.decided,
+  …, action.executed`.
+- Deny → no outbox row, action `denied`. Expiry (20 s TTL) → EXPIRED, action `expired`, late
+  approve is a no-op.
+- 18-row policy table unit test; gateway approval unit tests (pending reuse, changed args, single
+  execution under the original action id, no workflow → nothing runs).
+- Browser (headless Chrome): approval card → Approve → sent; phone width Approvals tab → Deny;
+  recent decisions listed; no horizontal scroll; no console errors.
+
+Bugs found and fixed:
+
+- A message queued while the previous turn ran gets a lower seq than that turn's reply, so the
+  next turn's history missed the reply and the model redid the earlier request (it proposed the
+  already-sent message again). History now includes later assistant replies (turns are
+  sequential). Regression test added.
+
+Findings (model behaviour, system stayed correct):
+
+- In one UI run the model refused an action claiming an earlier denial that never happened. The
+  instruction now says to act only on denials seen in a tool result.
+- In one regression run the model replied "Message sent to erin@example.com (outbox id …)"
+  without ever calling the tool: no action, no outbox row, no audit event. Nothing runs without
+  approval, and the chat's tool chips show only real actions, so the lie was visible. A claim
+  check in trusted code (e.g. reject replies that cite ids absent from this run's tool results)
+  is a candidate follow-up. Tests now assert invariants (no redo, every outbox row has an
+  APPROVED approval) instead of model obedience.
+
+Test-design fix: the sandbox fork-bomb check left ~255 sleepers holding the pid limit, so the next
+`docker exec` failed inside runc; it now runs last and accepts either Python's or runc's EAGAIN.
+
+Known limitations:
+
+- Domain allowlist has no UI yet (Phase 7, where browser tools use it).
+- Approvals are decided in the web UI only; Telegram buttons arrive in Phase 10.
+
 ## Decisions log
 
+- 2026-09-27: Approval waits use PydanticAI deferred tools (`ApprovalRequired` →
+  `DeferredToolRequests` → re-run with `DeferredToolResults`); the gateway, not the model or the
+  run context, decides whether an approval authorizes a call.
+- 2026-09-27: Decisions are written by the workflow (Update → conditional activity), not by the
+  API, so the workflow never misses one.
 - 2026-09-27: sandboxd keeps no database; the worker records `sandboxes` rows.
 - 2026-09-27: Memory step and Phase 5 share one commit (their changes overlap in shared files).
 - 2026-09-27: Starting a topic is split: the tool records intent (gateway, audited), the

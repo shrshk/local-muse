@@ -118,6 +118,20 @@ class MessagesController:
         rows = (await self._conn.execute(stmt)).mappings().all()
         return [MessageView.model_validate(dict(r)) for r in reversed(rows)]
 
+    async def replies_after(self, conversation_id: uuid.UUID, seq: int) -> list[MessageView]:
+        """Assistant messages persisted after `seq`, oldest first."""
+        stmt = (
+            select(messages)
+            .where(
+                messages.c.conversation_id == conversation_id,
+                messages.c.seq > seq,
+                messages.c.role == "assistant",
+            )
+            .order_by(messages.c.seq)
+        )
+        rows = (await self._conn.execute(stmt)).mappings().all()
+        return [MessageView.model_validate(dict(r)) for r in rows]
+
     async def recent(
         self, conversation_id: uuid.UUID, limit: int, *, before_seq: int
     ) -> list[MessageView]:

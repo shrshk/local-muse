@@ -4,7 +4,7 @@ It gets the same gateway toolset minus topic.start (depth is 1).
 """
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.models import Model
 
 from muse.agents.coordinator import build_durability
@@ -33,12 +33,12 @@ class TopicReport(BaseModel):
 
 def build_topic_worker(
     model: Model, registry: ToolRegistry, model_task_queue: str
-) -> Agent[AgentDeps, TopicReport]:
+) -> Agent[AgentDeps, TopicReport | DeferredToolRequests]:
     return Agent(
         model,
         name=AGENT_NAME,
         deps_type=AgentDeps,
-        output_type=TopicReport,
+        output_type=[TopicReport, DeferredToolRequests],
         instructions=INSTRUCTIONS,
         toolsets=[build_toolset(registry, exclude=NO_TOPIC_TOOLS)],
         retries=1,

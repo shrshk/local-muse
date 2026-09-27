@@ -175,3 +175,15 @@ workflow durability.
   a `topic_result` turn. That turn's prompt is the event (`[event] …`), so the coordinator relays it.
 - **Guards.** The conversation workflow does not idle-complete or Continue-As-New while topics are
   active (children belong to the run).
+
+## Implementation (Phase 6): approval waits
+
+- Both ConversationWorkflow and TopicWorkflow run agents through `run_with_approvals`, own an
+  `ApprovalGate`, and expose `decide_approval` (Update + validator). Status queries report
+  `waiting_approval_ids`.
+- The wait is `workflow.wait_condition(gate.all_decided, timeout=approval_timeout_s)`; the timer
+  and the pending set are Temporal state, so a restart of every service (tested) resumes the same
+  wait. Model and tool activities that completed before the wait are not re-run on resume.
+- `ConversationState.approval_timeout_s` / `TopicInput.approval_timeout_s` (default 7 days) set
+  both the timer and the approval's `expires_at`.
+- Agents' output type includes `DeferredToolRequests`, so a paused run is a normal result.

@@ -8,7 +8,7 @@ from muse.policy.classification import (
     RiskClass,
     SideEffectClass,
 )
-from muse.tools.executors import clock, profile, sandbox, topics
+from muse.tools.executors import clock, outbox, profile, sandbox, topics
 from muse.tools.registry import ToolRegistry
 from muse.tools.schema import ExecContext, RetryPolicy, ToolSpec
 
@@ -45,6 +45,15 @@ def _sandbox_read(_: Any, __: ExecContext) -> Classification:
     )
 
 
+def _message_send(args: Any, _: ExecContext) -> Classification:
+    return Classification(
+        risk=RiskClass.EXTERNAL_WRITE,
+        side_effect=SideEffectClass.MESSAGE_SEND,
+        data_classification=DataClassification.PERSONAL,
+        destination=str(args.recipient),
+    )
+
+
 def build_registry() -> ToolRegistry:
     return ToolRegistry(
         [
@@ -76,6 +85,17 @@ def build_registry() -> ToolRegistry:
                 args_model=profile.RememberArgs,
                 classify=_local_mutation,
                 executor=profile.remember,
+                idempotent=True,
+            ),
+            ToolSpec(
+                name="outbox.send",
+                description=(
+                    "Send a message to someone by email address. Requires the user's approval "
+                    "before it is sent."
+                ),
+                args_model=outbox.SendArgs,
+                classify=_message_send,
+                executor=outbox.send,
                 idempotent=True,
             ),
             ToolSpec(

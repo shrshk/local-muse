@@ -6,8 +6,18 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
-from muse.api.routers import auth, conversations, health, memory, models, realtime, topics
+from muse.api.routers import (
+    approvals,
+    auth,
+    conversations,
+    health,
+    memory,
+    models,
+    realtime,
+    topics,
+)
 from muse.models.factory import build_provider
+from muse.modules.approvals.approvals_handler import ApprovalsHandler
 from muse.modules.auth.auth_handler import AuthHandler
 from muse.modules.conversations.conversations_handler import ConversationsHandler
 from muse.modules.health.health_handler import HealthHandler
@@ -49,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.conversations_handler = ConversationsHandler(engine, temporal, settings)
     app.state.topics_handler = TopicsHandler(engine, temporal)
     app.state.profile_memory_handler = ProfileMemoryHandler(engine)
+    app.state.approvals_handler = ApprovalsHandler(engine, temporal)
     logger.info("backend_ready", model=settings.model_name, mode=settings.local_muse_mode)
     yield
     await provider.aclose()
@@ -62,6 +73,7 @@ for router in (
     auth.router,
     conversations.router,
     topics.router,
+    approvals.router,
     memory.router,
     models.router,
     realtime.router,

@@ -1,4 +1,5 @@
 import type {
+  Approval,
   ConnectionToken,
   Conversation,
   ConversationState,
@@ -59,6 +60,13 @@ export const api = {
     }),
   deleteProfileFact: (key: string) =>
     request<void>(`/api/profile/memory/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+  approvals: (status?: string) =>
+    request<Approval[]>(`/api/approvals${status ? `?status=${status}` : ''}`),
+  decide: (approval: Approval, decision: 'approve' | 'deny') =>
+    post<{ approval: Approval; changed: boolean }>(`/api/approvals/${approval.id}/decision`, {
+      decision,
+      approval_key: approval.approval_key,
+    }),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
 };

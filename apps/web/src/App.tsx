@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 
 import { api } from './api';
 import { disconnectRealtime } from './realtime';
+import { ApprovalsPage } from './components/ApprovalsPage';
 import { ChatPage } from './components/ChatPage';
 import { LoginForm } from './components/LoginForm';
 import { MemoryPage } from './components/MemoryPage';
 import { StatusPage } from './components/StatusPage';
 import type { Principal } from './types';
 
-type Tab = 'chat' | 'memory' | 'status';
+type Tab = 'chat' | 'approvals' | 'memory' | 'status';
 
 export function App() {
   const [user, setUser] = useState<Principal | null | undefined>(undefined);
@@ -35,7 +36,7 @@ export function App() {
       <header className="shell__head">
         <strong>Local Muse</strong>
         <nav>
-          {(['chat', 'memory', 'status'] as const).map((t) => (
+          {(['chat', 'approvals', 'memory', 'status'] as const).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t[0].toUpperCase() + t.slice(1)}
             </button>
@@ -46,6 +47,7 @@ export function App() {
         </button>
       </header>
       {tab === 'chat' && <ChatPage />}
+      {tab === 'approvals' && <ApprovalsPage />}
       {tab === 'memory' && <MemoryPage />}
       {tab === 'status' && <StatusPage />}
     </div>

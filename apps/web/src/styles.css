@@ -115,3 +115,17 @@ button.link { border: none; background: none; color: var(--muted); padding: 4px;
 .fact__edit { display: flex; gap: 8px; }
 .fact__edit input, .fact-form input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; font-size: 1rem; }
 @media (min-width: 640px) { .fact-form { grid-template-columns: 1fr 2fr auto; align-items: start; } .fact-form .form__error { grid-column: 1 / -1; } }
+
+.approval { align-self: stretch; border: 1px solid var(--degraded); border-radius: 12px; padding: 12px; background: var(--surface); display: grid; gap: 8px; }
+.approval__head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.approval__args { margin: 0; padding: 8px; background: var(--bg); border-radius: 8px; font-size: 0.8125rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approval__foot { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; font-size: 0.8125rem; }
+.approval__foot .muted { flex: 1; }
+.approval__approve { background: var(--online); color: #fff; border-color: var(--online); }
+.approval__deny { border-color: var(--offline); color: var(--offline); }
+.approvals { display: grid; gap: 10px; margin-top: 16px; }
+.section-title { margin: 24px 0 0; font-size: 1rem; }
+.badge { font-size: 0.75rem; letter-spacing: 0.04em; }
+.badge--approved { color: var(--online); }
+.badge--denied, .badge--expired { color: var(--offline); }
+.shell__head nav { overflow-x: auto; }

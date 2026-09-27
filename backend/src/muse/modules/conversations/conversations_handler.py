@@ -13,6 +13,7 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from muse.modules.actions.actions_controller import ActionsController
 from muse.modules.actions.actions_schema import ActionView
+from muse.modules.approvals.approvals_controller import ApprovalsController
 from muse.modules.conversations.conversations_controller import (
     ConversationsController,
     MessagesController,
@@ -98,12 +99,16 @@ class ConversationsHandler:
             messages = await MessagesController(conn).list_for_conversation(conversation_id)
             actions = await ActionsController(conn).list_for_conversation(conversation_id, user_id)
             topics = await TopicsController(conn).list_for_conversation(conversation_id, user_id)
+            approvals = await ApprovalsController(conn).list_for_user(
+                user_id, conversation_id=conversation_id
+            )
         return ConversationStateView(
             conversation=conversation,
             seq=seq,
             messages=messages,
             actions=actions,
             topics=topics,
+            approvals=approvals,
             status=await self._status(conversation_id),
         )
 
@@ -118,6 +123,7 @@ class ConversationsHandler:
                 user_id=user_id,
                 history_limit=self._settings.chat_history_messages,
                 history_token_budget=self._settings.history_token_budget,
+                approval_timeout_s=self._settings.approval_timeout_s,
             ),
             id=workflow_id(conversation_id),
             id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,

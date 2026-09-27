@@ -54,6 +54,7 @@ export interface ConversationStatus {
   running_turn_id: string | null;
   pending_turn_ids: string[];
   active_topic_ids: string[];
+  waiting_approval_ids: string[];
   last_error: string | null;
 }
 
@@ -89,12 +90,33 @@ export interface TopicMemory {
   updated_at: string;
 }
 
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'EXPIRED';
+
+export interface Approval {
+  id: string;
+  action_id: string;
+  approval_key: string;
+  conversation_id: string;
+  topic_id: string | null;
+  tool: string;
+  args: Record<string, Json>;
+  destination: string | null;
+  summary: string;
+  status: ApprovalStatus;
+  decided_by: string | null;
+  channel: string | null;
+  decided_at: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
 export interface ConversationState {
   conversation: Conversation;
   seq: number;
   messages: Message[];
   actions: Action[];
   topics: Topic[];
+  approvals: Approval[];
   status: ConversationStatus;
 }
 

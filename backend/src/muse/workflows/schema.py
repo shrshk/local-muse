@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 TURNS_PER_RUN = 50
+APPROVAL_TIMEOUT_S = 7 * 24 * 3600
 
 
 class PendingTurn(BaseModel):
@@ -25,6 +26,7 @@ class ConversationState(BaseModel):
     user_id: uuid.UUID
     history_limit: int
     history_token_budget: int = 8000
+    approval_timeout_s: int = APPROVAL_TIMEOUT_S
     turns_per_run: int = TURNS_PER_RUN
     pending: list[PendingTurn] = Field(default_factory=list)
 
@@ -43,6 +45,7 @@ class ConversationStatus(BaseModel):
     running_turn_id: uuid.UUID | None = None
     pending_turn_ids: list[uuid.UUID] = Field(default_factory=list)
     active_topic_ids: list[uuid.UUID] = Field(default_factory=list)
+    waiting_approval_ids: list[uuid.UUID] = Field(default_factory=list)
     last_error: str | None = None
 
 
@@ -122,6 +125,7 @@ class TopicInput(BaseModel):
     title: str
     objective: str
     step_limit: int
+    approval_timeout_s: int = APPROVAL_TIMEOUT_S
 
 
 class TopicResult(BaseModel):

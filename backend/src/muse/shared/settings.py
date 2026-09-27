@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     model_timeout_seconds: float = 600.0
     chat_history_messages: int = 20
     history_token_budget: int = 8000
+    approval_timeout_s: int = 7 * 24 * 3600
 
     probe_timeout_seconds: float = 2.0
     heartbeat_interval_seconds: float = 10.0

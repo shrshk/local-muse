@@ -1,8 +1,11 @@
 """Classification vocabulary. Values are assigned by the trusted registry, never by the model."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+BrowserContext = Literal["research", "authenticated"]
 
 
 class RiskClass(StrEnum):
@@ -39,3 +42,6 @@ class Classification(BaseModel):
     required_permissions: tuple[str, ...] = ()
     data_classification: DataClassification
     destination: str | None = None
+    # Browser tools only (Phase 7): trusted facts the policy keys on.
+    browser_context: BrowserContext | None = None
+    element_name: str | None = None

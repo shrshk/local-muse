@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api';
 import { useConversation } from '../hooks/useConversation';
 import type { Action, Conversation, Message } from '../types';
+import { ApprovalCard } from './ApprovalCard';
 import { ToolCallChip } from './ToolCallChip';
 import { TopicsPanel } from './TopicsPanel';
 
@@ -114,7 +115,12 @@ export function ChatPage() {
               />
             ),
           )}
-          {busy && (
+          {state?.approvals
+            .filter((a) => a.status === 'PENDING')
+            .map((a) => (
+              <ApprovalCard key={a.id} approval={a} onDecided={() => void reload()} />
+            ))}
+          {busy && !state?.status.waiting_approval_ids.length && (
             <div className={`bubble bubble--assistant ${streaming?.text ? '' : 'bubble--thinking'}`}>
               {streaming?.text || 'Thinking…'}
             </div>

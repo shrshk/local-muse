@@ -128,16 +128,19 @@ def test_pid_and_memory_limits_are_enforced(sid: uuid.UUID):
 await c.ensure(sid)
 await run("pids_max", "cat /sys/fs/cgroup/pids.max")
 await run("mem_max", "cat /sys/fs/cgroup/memory.max")
-await run("fork", "python -c \\"import subprocess; [subprocess.Popen(['sleep', '20']) for _ in range(400)]\\"")
-await run("oom", "python -c \\"b = b'x' * (5 * 1024 ** 3)\\"", 120)
+await run("oom", "python -c \\"chunks = [bytearray(256 * 1024 ** 2) for _ in range(24)]; [c.__setitem__(slice(None, None, 4096), b'x' * (len(c) // 4096)) for c in chunks]\\"", 120)
 await run("oom_events", "grep oom_kill /sys/fs/cgroup/memory.events")
 await run("timeout", "sleep 30", 2)
+# Last: the fork bomb leaves ~255 sleepers holding the pid limit for 20 s.
+await run("fork", "python -c \\"import subprocess; [subprocess.Popen(['sleep', '20']) for _ in range(400)]\\"")
 """,
     )
     assert r["pids_max"]["stdout"].strip() == "256"
     assert r["mem_max"]["stdout"].strip() == str(4 * 1024**3)
-    assert r["fork"]["exit_code"] != 0
-    assert "Resource temporarily unavailable" in r["fork"]["stderr"]
+    assert r["fork"]["exit_code"] != 0, r["fork"]
+    # Python's BlockingIOError, or runc's own pthread_create failure when the exec itself hits it.
+    fork_output = r["fork"]["stdout"] + r["fork"]["stderr"]
+    assert "Resource temporarily unavailable" in fork_output, r["fork"]
     assert r["oom"]["exit_code"] != 0
     assert int(r["oom_events"]["stdout"].split()[1]) >= 1, "the kernel OOM-killed it"
     assert r["timeout"]["timed_out"] is True

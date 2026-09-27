@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from muse.modules.actions.actions_schema import ActionView
+from muse.modules.approvals.approvals_schema import ApprovalView
 from muse.modules.topics.topics_schema import TopicView
 from muse.workflows.schema import ConversationStatus
 
@@ -44,4 +45,5 @@ class ConversationStateView(BaseModel):
     messages: list[MessageView]
     actions: list[ActionView]
     topics: list[TopicView]
+    approvals: list[ApprovalView]
     status: ConversationStatus

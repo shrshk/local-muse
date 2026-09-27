@@ -15,6 +15,8 @@ class AgentDeps:
     topic_id: uuid.UUID | None = None
     actor_id: str = "coordinator"
     trigger: Literal["user", "event"] = "user"
+    workflow_id: str | None = None
+    approval_ttl_s: int = 7 * 24 * 3600
 
     def exec_context(self) -> ExecContext:
         return ExecContext(
@@ -23,4 +25,6 @@ class AgentDeps:
             topic_id=self.topic_id,
             actor_id=self.actor_id,
             trigger=self.trigger,
+            workflow_id=self.workflow_id,
+            approval_ttl_s=self.approval_ttl_s,
         )

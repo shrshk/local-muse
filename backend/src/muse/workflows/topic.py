@@ -5,11 +5,14 @@ cancellation is delivered; later phases also destroy the sandbox and close the b
 """
 
 import asyncio
+import uuid
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
+
+from muse.workflows.approvals import ApprovalGate, run_with_approvals
 
 with workflow.unsafe.imports_passed_through():
     import annotated_types  # noqa: F401  # pydantic imports it lazily; keep it out of the sandbox
@@ -18,6 +21,7 @@ with workflow.unsafe.imports_passed_through():
     from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
     from pydantic_ai.usage import UsageLimits
 
+    from muse.activities.approvals import ApprovalActivities, ApprovalDecisionInput
     from muse.activities.conversation import ConversationActivities
     from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
@@ -39,6 +43,26 @@ ACTIVITY_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(sec
 @workflow.defn(name="TopicWorkflow")
 class TopicWorkflow(PydanticAIWorkflow):
     __pydantic_ai_agents__ = (TOPIC_WORKER,)
+
+    def __init__(self) -> None:
+        self._gate = ApprovalGate()
+
+    @workflow.update
+    async def decide_approval(self, decision: ApprovalDecisionInput) -> bool:
+        applied = await workflow.execute_activity_method(
+            ApprovalActivities.record_decision,
+            decision,
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=ACTIVITY_RETRY,
+        )
+        if applied:
+            self._gate.record(decision.approval_id, decision.approved)
+            await self._publish("approval.resolved", approval_id=str(decision.approval_id))
+        return applied
+
+    @decide_approval.validator
+    def _validate_decision(self, decision: ApprovalDecisionInput) -> None:
+        self._gate.check(decision.approval_id)
 
     @workflow.run
     async def run(self, topic: TopicInput) -> TopicResult:
@@ -62,6 +86,8 @@ class TopicWorkflow(PydanticAIWorkflow):
             turn_id=topic.topic_id,
             topic_id=topic.topic_id,
             actor_id=f"topic:{topic.topic_id}",
+            workflow_id=workflow.info().workflow_id,
+            approval_ttl_s=topic.approval_timeout_s,
         )
         profile = await workflow.execute_activity_method(
             ConversationActivities.profile_context,
@@ -73,11 +99,15 @@ class TopicWorkflow(PydanticAIWorkflow):
             [ModelRequest(parts=[SystemPromptPart(content=profile)])] if profile else []
         )
         try:
-            result = await TOPIC_WORKER.run(
+            result = await run_with_approvals(
+                TOPIC_WORKER,
                 f"Objective: {topic.objective}",
-                message_history=history,
-                deps=deps,
-                usage_limits=UsageLimits(request_limit=topic.step_limit),
+                history,
+                deps,
+                UsageLimits(request_limit=topic.step_limit),
+                self._gate,
+                self._announce,
+                timedelta(seconds=topic.approval_timeout_s),
             )
         except asyncio.CancelledError:
             await self._finish(FinishTopicInput(topic_id=topic.topic_id, status="cancelled"))
@@ -102,6 +132,11 @@ class TopicWorkflow(PydanticAIWorkflow):
         await self._publish("topic.completed")
         return TopicResult(
             topic_id=topic.topic_id, title=topic.title, status="completed", summary=report.summary
+        )
+
+    async def _announce(self, approval_ids: list[uuid.UUID]) -> None:
+        await self._publish(
+            "approval.required", approval_ids=",".join(str(a) for a in approval_ids)
         )
 
     async def _finish(self, outcome: FinishTopicInput) -> None:

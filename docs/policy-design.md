@@ -96,8 +96,7 @@ DataClassification  PUBLIC PERSONAL AUTHENTICATED SECRET
 | 15 | risk ∈ {EXTERNAL_WRITE, SENSITIVE_EXTERNAL_WRITE, DESTRUCTIVE} | REQUIRE_APPROVAL |
 | 16 | default | REQUIRE_APPROVAL |
 
-Phase 2 ships the engine returning ALLOW for everything (`policy/engine.py`); Phase 6 installs
-this table. The tool
+Phase 6 installed this table in `policy/engine.py` as ordered `Rule`s. The tool
 stack does not change between the two.
 
 ## Browser context rules
@@ -133,3 +132,42 @@ context. Those go into `summary_for_human`, not identity.
 - One approval grants exactly one `approval_key`. Different args → new approval.
 - Retry of the same action reuses `action_id` and `approval_key` and does not re-prompt.
 - A decision on a non-PENDING approval is a no-op. Expiry (7 days) → DENIED(expired).
+
+## Implementation (Phase 6)
+
+- Rules (first match wins): `secret` → DENY; `sandbox` → ALLOW; `browser` (open authenticated →
+  approval; reads ALLOW; mutations: authenticated → approval, escalation heuristic → approval,
+  allowlisted research domain → ALLOW, else approval); `named_allows` (`http.get`, `web.search`,
+  `notify.user`, and the local assistant tools `clock.now`, `profile.remember`, `topic.start`);
+  `approval_classes` (MESSAGE_SEND/REMOTE_UPDATE/PURCHASE/DELETE side effects, EXTERNAL_WRITE/
+  SENSITIVE/DESTRUCTIVE risks); `read_only` (READ_ONLY with NONE/NETWORK_READ) → ALLOW; default →
+  REQUIRE_APPROVAL. Unknown tools are denied by the gateway before a proposal exists (rule 1).
+  There are no host/system tools to deny (rule 3).
+- Browser rows key on trusted classification fields `browser_context`, `destination` (domain)
+  and `element_name`, filled by browser tool classifiers in Phase 7. Escalation applies in both
+  contexts (stricter than the spec's minimum). The allowlist (`domain_allowlist`, per user and
+  context, matches parent domains) is read by the engine; its UI arrives with Phase 7.
+- `Decision` carries the matching rule name; it is logged with every tool call.
+
+### Approval flow
+
+1. Gateway: REQUIRE_APPROVAL → records the action (`pending_approval`) and an `approvals` row
+   (PENDING, `approval_key`, human summary, `expires_at`, `workflow_id`), audits
+   `approval.requested`, and the tool raises PydanticAI `ApprovalRequired(approval_id)`.
+2. The run ends with `DeferredToolRequests`; the workflow (`workflows/approvals.py`) opens the
+   gate, publishes `approval.required`, and waits durably (timer = approval TTL, default 7 days).
+3. `POST /api/approvals/{id}/decision {decision, approval_key}`: 404 unless the caller owns it;
+   a non-PENDING approval returns `changed: false` (no-op); a different key → 409; expired → 409.
+   Otherwise the API sends the `decide_approval` Update.
+4. The Update validator rejects approvals the workflow is not waiting on or has decided; the
+   handler records the decision with a conditional update (still PENDING, same key, unexpired),
+   so at most one of two racing decisions applies. The action row becomes approved/denied.
+5. When all are decided (or the timer fires and `approval.expire` marks them EXPIRED), the agent
+   re-runs with `DeferredToolResults` (True, or ToolDenied with a reason).
+6. The approved tool call reaches the gateway again: an APPROVED, unused approval for the same
+   key in the same workflow is consumed and the executor runs under the original `action_id`.
+   A retry after a crash mid-execution re-runs only idempotent executors (same `action_id`).
+   Different arguments → different key → a new approval.
+
+Stub external tool for tests and demos: `outbox.send` (EXTERNAL_WRITE / MESSAGE_SEND, destination
+= recipient) writes to `outbox`, idempotent on `action_id`.

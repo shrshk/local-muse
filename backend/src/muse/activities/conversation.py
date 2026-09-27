@@ -61,6 +61,10 @@ class ConversationActivities:
                 after_seq=summary[0] if summary else 0,
                 before_seq=current.seq,
             )
+            # A message queued while the previous turn ran gets a lower seq than that turn's
+            # reply. Turns are sequential, so any later assistant message answers an earlier
+            # turn and belongs in this turn's history.
+            candidates += await messages.replies_after(request.conversation_id, current.seq)
             profile = await ProfileMemoryController(conn).list_for_user(request.user_id)
             topics = await TopicsController(conn).list_for_conversation(
                 request.conversation_id, request.user_id

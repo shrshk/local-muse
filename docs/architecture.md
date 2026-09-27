@@ -99,7 +99,7 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | 4 | `topics`, `topic_memory` |
 | memory step | `profile_memory`, `conversation_summaries` |
 | 5 | `sandboxes`, `artifacts` (+ worker-only `artifacts` volume) |
-| 6 | `approvals`, `domain_allowlist` |
+| 6 | `approvals`, `domain_allowlist`, `outbox` (demo external-write target) |
 | 7–8 | `browser_sessions` |
 | 9 | `goals`, `notification_preferences` |
 | — | `connector_accounts` (schema only, when credential plumbing lands) |

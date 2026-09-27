@@ -3,6 +3,7 @@
 from fastapi import Cookie, Depends, HTTPException, Request, status
 
 from muse.models.provider import ModelProvider
+from muse.modules.approvals.approvals_handler import ApprovalsHandler
 from muse.modules.auth.auth_handler import SESSION_COOKIE, AuthHandler, InvalidSession
 from muse.modules.auth.auth_schema import Principal
 from muse.modules.conversations.conversations_handler import ConversationsHandler
@@ -39,6 +40,11 @@ def topics_handler(request: Request) -> TopicsHandler:
 
 def profile_memory_handler(request: Request) -> ProfileMemoryHandler:
     handler: ProfileMemoryHandler = request.app.state.profile_memory_handler
+    return handler
+
+
+def approvals_handler(request: Request) -> ApprovalsHandler:
+    handler: ApprovalsHandler = request.app.state.approvals_handler
     return handler
 
 

@@ -203,3 +203,49 @@ sandboxes = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+approvals = Table(
+    "approvals",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column("action_id", UUID(as_uuid=True), ForeignKey("actions.action_id"), nullable=False),
+    Column("approval_key", Text, nullable=False),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("topic_id", UUID(as_uuid=True)),
+    Column("workflow_id", Text, nullable=False),
+    Column("tool", Text, nullable=False),
+    Column("args", JSONB, nullable=False),
+    Column("destination", Text),
+    Column("summary", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("decided_by", Text),
+    Column("channel", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("consumed_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Index("ix_approvals_key_workflow", "approval_key", "workflow_id"),
+    Index("ix_approvals_user_status", "user_id", "status"),
+)
+
+domain_allowlist = Table(
+    "domain_allowlist",
+    metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("domain", Text, nullable=False),
+    Column("context", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("user_id", "domain", "context", name="pk_domain_allowlist"),
+)
+
+outbox = Table(
+    "outbox",
+    metadata,
+    Column("action_id", UUID(as_uuid=True), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("recipient", Text, nullable=False),
+    Column("body", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)

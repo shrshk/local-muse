@@ -15,6 +15,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, CancelledError, ChildWorkflowError
 
+from muse.workflows.approvals import ApprovalGate, run_with_approvals
 from muse.workflows.topic import TopicWorkflow
 
 with workflow.unsafe.imports_passed_through():
@@ -31,6 +32,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from pydantic_ai.usage import UsageLimits
 
+    from muse.activities.approvals import ApprovalActivities, ApprovalDecisionInput
     from muse.activities.conversation import ConversationActivities
     from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
@@ -78,6 +80,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
         self._turns = 0
         self._active_topics: dict[uuid.UUID, TopicStart] = {}
         self._watchers: set[asyncio.Task[None]] = set()
+        self._gate = ApprovalGate()
 
     @workflow.run
     async def run(self, state: ConversationState) -> None:
@@ -121,12 +124,33 @@ class ConversationWorkflow(PydanticAIWorkflow):
         if len(self._queue) >= MAX_PENDING:
             raise ValueError("too many pending messages")
 
+    @workflow.update
+    async def decide_approval(self, decision: ApprovalDecisionInput) -> bool:
+        applied = await workflow.execute_activity_method(
+            ApprovalActivities.record_decision,
+            decision,
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
+        if applied:
+            self._gate.record(decision.approval_id, decision.approved)
+            await self._publish_data(
+                "approval.resolved",
+                {"approval_id": str(decision.approval_id), "approved": decision.approved},
+            )
+        return applied
+
+    @decide_approval.validator
+    def _validate_decision(self, decision: ApprovalDecisionInput) -> None:
+        self._gate.check(decision.approval_id)
+
     @workflow.query
     def status(self) -> ConversationStatus:
         return ConversationStatus(
             running_turn_id=self._running.turn_id if self._running else None,
             pending_turn_ids=[t.turn_id for t in self._queue],
             active_topic_ids=list(self._active_topics),
+            waiting_approval_ids=self._gate.waiting(),
             last_error=self._last_error,
         )
 
@@ -149,13 +173,25 @@ class ConversationWorkflow(PydanticAIWorkflow):
             conversation_id=self._state.conversation_id,
             turn_id=turn.turn_id,
             trigger="user" if turn.kind == "user" else "event",
+            workflow_id=workflow.info().workflow_id,
+            approval_ttl_s=self._state.approval_timeout_s,
         )
+
+        async def announce(approval_ids: list[uuid.UUID]) -> None:
+            await self._publish(
+                "approval.required", turn, approval_ids=[str(a) for a in approval_ids]
+            )
+
         try:
-            result = await COORDINATOR.run(
+            result = await run_with_approvals(
+                COORDINATOR,
                 context.prompt,
-                message_history=with_context(context.context, to_model_history(context.history)),
-                deps=deps,
-                usage_limits=UsageLimits(request_limit=MAX_REQUESTS_PER_TURN),
+                with_context(context.context, to_model_history(context.history)),
+                deps,
+                UsageLimits(request_limit=MAX_REQUESTS_PER_TURN),
+                self._gate,
+                announce,
+                timedelta(seconds=self._state.approval_timeout_s),
             )
         except (AgentRunError, ActivityError) as exc:
             self._last_error = type(exc).__name__
@@ -242,6 +278,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
                     title=topic.title,
                     objective=topic.objective,
                     step_limit=DEFAULT_STEP_LIMIT,
+                    approval_timeout_s=self._state.approval_timeout_s,
                 ),
                 id=f"topic-{topic.topic_id}",
                 # Cancel (not terminate) so the topic's cleanup always runs.
@@ -295,6 +332,9 @@ class ConversationWorkflow(PydanticAIWorkflow):
             self._queue.append(turn)
 
     async def _publish(self, event_type: str, turn: PendingTurn, **data: Any) -> None:
+        await self._publish_data(event_type, {"turn_id": str(turn.turn_id), **data})
+
+    async def _publish_data(self, event_type: str, data: dict[str, Any]) -> None:
         """Best effort: a lost event is a client-side gap, never a failed turn."""
         try:
             await workflow.execute_activity_method(
@@ -302,7 +342,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
                 PublishEventInput(
                     channel=conversation_channel(self._state.conversation_id),
                     event_type=event_type,
-                    data={"turn_id": str(turn.turn_id), **data},
+                    data=data,
                 ),
                 start_to_close_timeout=PUBLISH_TIMEOUT,
                 retry_policy=PUBLISH_RETRY,

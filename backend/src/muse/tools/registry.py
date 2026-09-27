@@ -50,4 +50,6 @@ class ToolRegistry:
             destination=classification.destination,
             credential_ref=credential_ref,
             created_at=dt.datetime.now(dt.UTC),
+            browser_context=classification.browser_context,
+            element_name=classification.element_name,
         )

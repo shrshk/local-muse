@@ -15,6 +15,7 @@ import httpx
 from pydantic_ai.durable_exec.temporal import TemporalDurability
 from temporalio.worker import Worker
 
+from muse.activities.approvals import ApprovalActivities
 from muse.activities.conversation import ConversationActivities
 from muse.activities.sandbox import SandboxActivities
 from muse.activities.topics import TopicActivities
@@ -29,6 +30,7 @@ from muse.shared.db import create_engine
 from muse.shared.logger import configure_logging, get_logger
 from muse.shared.settings import Settings, get_settings
 from muse.shared.temporal import connect_temporal
+from muse.tools.approvals import PostgresApprovalStore, PostgresDomainAllowlist
 from muse.tools.recorder import PostgresActionRecorder
 from muse.tools.schema import ToolServices
 from muse.tools.specs import build_registry
@@ -71,7 +73,7 @@ class WorkerProcess:
         configure_agent_runtime(
             AgentRuntime(
                 registry=build_registry(),
-                policy=PolicyEngine(),
+                policy=PolicyEngine(PostgresDomainAllowlist(engine)),
                 recorder=PostgresActionRecorder(engine),
                 services=ToolServices(
                     engine=engine,
@@ -79,6 +81,7 @@ class WorkerProcess:
                     artifacts=ArtifactStore(engine, pathlib.Path(settings.artifacts_dir)),
                 ),
                 publisher=publisher,
+                approvals=PostgresApprovalStore(engine),
             )
         )
         worker = self._build_worker(
@@ -86,6 +89,7 @@ class WorkerProcess:
             ConversationActivities(engine, publisher),
             TopicActivities(engine),
             SandboxActivities(engine, sandbox),
+            ApprovalActivities(engine),
         )
         reporter = HeartbeatReporter(
             engine, self._probes(http), settings.heartbeat_interval_seconds
@@ -118,6 +122,7 @@ class WorkerProcess:
         conversations: ConversationActivities,
         topics: TopicActivities,
         sandboxes: SandboxActivities,
+        approvals: ApprovalActivities,
     ) -> Worker:
         if self._role == "model":
             # One local model: the queue serializes inference, no scheduler needed.
@@ -143,6 +148,8 @@ class WorkerProcess:
                 topics.claim_pending,
                 topics.finish,
                 sandboxes.release,
+                approvals.record_decision,
+                approvals.expire,
             ],
             interceptors=[HeartbeatInterceptor()],
         )

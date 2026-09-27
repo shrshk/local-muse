@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from muse.policy.engine import PolicyEngine
 from muse.realtime.publisher import RealtimePublisher
+from muse.tools.approvals import ApprovalStore
 from muse.tools.gateway import ToolGateway
 from muse.tools.recorder import ActionRecorder
 from muse.tools.registry import ToolRegistry
@@ -21,9 +22,12 @@ class AgentRuntime:
     recorder: ActionRecorder
     services: ToolServices
     publisher: RealtimePublisher | None
+    approvals: ApprovalStore | None = None
 
     def gateway(self, ctx: ExecContext) -> ToolGateway:
-        return ToolGateway(self.registry, self.policy, self.recorder, self.services, ctx)
+        return ToolGateway(
+            self.registry, self.policy, self.recorder, self.services, ctx, self.approvals
+        )
 
 
 _runtime: AgentRuntime | None = None

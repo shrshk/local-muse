@@ -6,7 +6,7 @@ become activities; outside one (unit tests) the capability is transparent.
 
 from datetime import timedelta
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, DeferredToolRequests
 from pydantic_ai.durable_exec.temporal import TemporalDurability
 from pydantic_ai.models import Model
 from temporalio.common import RetryPolicy
@@ -27,6 +27,9 @@ When the user tells you a lasting fact about themselves (preferences, constraint
 standing choices), save it with profile_remember. Never save secrets or passwords.
 For longer, separable work, start a background topic with topic_start (one call per topic) and
 tell the user it is running; you will receive its result later as an [event] message.
+Some actions (for example sending a message) need the user's approval; request them normally.
+A tool result that says the user denied an action means exactly that action was refused: do not
+retry it. Never assume a denial you have not been told about.
 When an [event] reports a topic result, relay the useful parts to the user; do not start new
 topics in reply to an [event]."""
 
@@ -55,12 +58,13 @@ def build_durability(
 
 def build_coordinator(
     model: Model, registry: ToolRegistry, model_task_queue: str
-) -> Agent[AgentDeps, str]:
+) -> Agent[AgentDeps, str | DeferredToolRequests]:
     return Agent(
         model,
         name=AGENT_NAME,
         deps_type=AgentDeps,
-        output_type=str,
+        # DeferredToolRequests: the run paused for approval; the workflow resumes it.
+        output_type=[str, DeferredToolRequests],
         instructions=INSTRUCTIONS,
         toolsets=[build_toolset(registry)],
         retries=1,
