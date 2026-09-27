@@ -65,6 +65,8 @@ path: registry → policy → executor → audit.
 | `profile.remember` | LOCAL_MUTATION / NONE / PERSONAL, idempotent | same as `topic.start` |
 | `sandbox.exec`, `sandbox.write_file`, `sandbox.stage`, `sandbox.stage_package` | LOCAL_MUTATION / LOCAL_FILE_WRITE / PERSONAL | rule 4 (`sandbox.*` ALLOW); staging AUTHENTICATED data needs approval (Phase 8) |
 | `sandbox.read_file`, `sandbox.list` | READ_ONLY / NONE / PERSONAL | rule 4 |
+| `browser.navigate`, `snapshot`, `screenshot`, `scroll`, `open_session`, `close_session` | READ_ONLY / NETWORK_READ / PUBLIC (AUTHENTICATED in an authenticated context) | browser rule: ALLOW (opening an authenticated session → approval) |
+| `browser.click`, `fill`, `press`, `download` | LOCAL_MUTATION / NETWORK_WRITE, destination = page domain, element_name from the snapshot | browser rule: allowlisted research domain → ALLOW; escalation or not allowlisted → approval; authenticated → approval |
 
 ## Enums
 

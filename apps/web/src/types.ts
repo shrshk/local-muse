@@ -110,6 +110,24 @@ export interface Approval {
   created_at: string;
 }
 
+export interface BrowserSession {
+  id: string;
+  conversation_id: string;
+  topic_id: string | null;
+  context: string;
+  mode: 'agent' | 'human';
+  current_url: string | null;
+  status: string;
+  frame_version: number;
+  updated_at: string;
+}
+
+export interface AllowlistEntry {
+  domain: string;
+  context: string;
+  created_at: string;
+}
+
 export interface ConversationState {
   conversation: Conversation;
   seq: number;
@@ -117,6 +135,7 @@ export interface ConversationState {
   actions: Action[];
   topics: Topic[];
   approvals: Approval[];
+  browser_sessions: BrowserSession[];
   status: ConversationStatus;
 }
 

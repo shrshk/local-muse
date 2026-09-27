@@ -1,8 +1,10 @@
-"""Workflow-side approval handling shared by ConversationWorkflow and TopicWorkflow.
+"""Workflow-side pauses shared by ConversationWorkflow and TopicWorkflow.
 
-A run that hits a REQUIRE_APPROVAL tool ends with DeferredToolRequests. The workflow waits,
-durably, until every pending approval is decided (through the `decide_approval` Update) or
-expires, then re-runs the agent with the answers. The gateway executes approved calls itself.
+A run ends with DeferredToolRequests when a tool needs approval (`approvals`) or when a human has
+the browser (`calls`, reason human_takeover). The workflow waits, durably, until every approval
+is decided (the `decide_approval` Update) or expires, and every browser is handed back (the
+`set_browser_mode` Update), then re-runs the agent with the answers. The gateway executes
+approved calls itself; deferred browser calls are simply re-planned by the model.
 """
 
 import uuid
@@ -35,6 +37,30 @@ ACTIVITY_TIMEOUT = timedelta(seconds=15)
 ACTIVITY_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(seconds=1))
 DENIED = "The user denied this action. Do not retry it."
 EXPIRED = "Nobody approved this action in time. Do not retry it."
+BROWSER_RETURNED = (
+    "The user took control of the browser and has now handed it back. The page may have "
+    "changed: take a new snapshot before acting."
+)
+BROWSER_NOT_RETURNED = "The user still has control of the browser. Do not use it now."
+
+
+class BrowserModes:
+    """Per-session control mode, as Temporal state. `agent` unless a human took over."""
+
+    def __init__(self) -> None:
+        self._modes: dict[str, str] = {}
+
+    def set(self, session_id: uuid.UUID, mode: str) -> None:
+        self._modes[str(session_id)] = mode
+
+    def is_human(self, session_id: uuid.UUID) -> bool:
+        return self._modes.get(str(session_id)) == "human"
+
+    def ready(self, session_id: str) -> bool:
+        return self._modes.get(session_id, "agent") == "agent"
+
+    def as_dict(self) -> dict[str, str]:
+        return dict(self._modes)
 
 
 class ApprovalGate:
@@ -90,6 +116,7 @@ async def run_with_approvals(
     gate: ApprovalGate,
     on_waiting: Callable[[list[uuid.UUID]], Awaitable[None]],
     wait_limit: timedelta,
+    browsers: BrowserModes | None = None,
 ) -> AgentRunResult[Any]:
     result = await agent.run(prompt, message_history=history, deps=deps, usage_limits=limits)
     while isinstance(result.output, DeferredToolRequests):
@@ -98,21 +125,38 @@ async def run_with_approvals(
             uuid.UUID(requests.metadata[call.tool_call_id]["approval_id"]): call.tool_call_id
             for call in requests.approvals
         }
+        taken_over = {
+            call.tool_call_id: requests.metadata.get(call.tool_call_id, {}).get("session_id", "")
+            for call in requests.calls
+        }
         gate.open(pending)
-        await on_waiting(list(pending))
+        if pending:
+            await on_waiting(list(pending))
+
+        def resumable(sessions: tuple[str, ...] = tuple(taken_over.values())) -> bool:
+            browsers_back = browsers is None or all(browsers.ready(s) for s in sessions)
+            return gate.all_decided() and browsers_back
+
         expired: set[uuid.UUID] = set()
         try:
-            await workflow.wait_condition(gate.all_decided, timeout=wait_limit)
+            await workflow.wait_condition(resumable, timeout=wait_limit)
         except TimeoutError:
-            expired = set(
-                await workflow.execute_activity_method(
-                    ApprovalActivities.expire,
-                    ExpireApprovalsInput(approval_ids=gate.undecided()),
-                    start_to_close_timeout=ACTIVITY_TIMEOUT,
-                    retry_policy=ACTIVITY_RETRY,
+            if gate.undecided():
+                expired = set(
+                    await workflow.execute_activity_method(
+                        ApprovalActivities.expire,
+                        ExpireApprovalsInput(approval_ids=gate.undecided()),
+                        start_to_close_timeout=ACTIVITY_TIMEOUT,
+                        retry_policy=ACTIVITY_RETRY,
+                    )
                 )
-            )
         answers = gate.results(expired)
+        answers.calls = {
+            call_id: BROWSER_RETURNED
+            if browsers is None or browsers.ready(session)
+            else BROWSER_NOT_RETURNED
+            for call_id, session in taken_over.items()
+        }
         gate.clear()
         result = await agent.run(
             message_history=result.all_messages(),

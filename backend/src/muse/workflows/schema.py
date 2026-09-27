@@ -46,6 +46,7 @@ class ConversationStatus(BaseModel):
     pending_turn_ids: list[uuid.UUID] = Field(default_factory=list)
     active_topic_ids: list[uuid.UUID] = Field(default_factory=list)
     waiting_approval_ids: list[uuid.UUID] = Field(default_factory=list)
+    browser_modes: dict[str, str] = Field(default_factory=dict)
     last_error: str | None = None
 
 

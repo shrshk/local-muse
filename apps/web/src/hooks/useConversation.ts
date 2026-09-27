@@ -68,6 +68,8 @@ export function useConversation(conversationId: string | null) {
             return { ...current, text: current.text + (event.data.text ?? '') };
           });
           break;
+        case 'browser.frame':
+          break; // the viewer follows frames on its own channel
         default:
           // Tool results and final messages change durable state: take it from the API.
           void reload();

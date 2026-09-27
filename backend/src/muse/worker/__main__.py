@@ -16,11 +16,13 @@ from pydantic_ai.durable_exec.temporal import TemporalDurability
 from temporalio.worker import Worker
 
 from muse.activities.approvals import ApprovalActivities
+from muse.activities.browser import BrowserActivities
 from muse.activities.conversation import ConversationActivities
 from muse.activities.sandbox import SandboxActivities
 from muse.activities.topics import TopicActivities
 from muse.agents.instances import AGENTS
 from muse.agents.runtime import AgentRuntime, configure_agent_runtime
+from muse.browser.controller import BrowserController
 from muse.modules.artifacts.store import ArtifactStore
 from muse.modules.health.probes import Probe, ProcessProbe, SandboxdProbe
 from muse.policy.engine import PolicyEngine
@@ -70,6 +72,8 @@ class WorkerProcess:
         http = httpx.AsyncClient(timeout=settings.probe_timeout_seconds)
         publisher = RealtimePublisher(engine, http, settings)
         sandbox = SandboxClient(http, settings)
+        artifacts = ArtifactStore(engine, pathlib.Path(settings.artifacts_dir))
+        browser = BrowserController(engine, artifacts, publisher) if self._role == "main" else None
         configure_agent_runtime(
             AgentRuntime(
                 registry=build_registry(),
@@ -78,7 +82,8 @@ class WorkerProcess:
                 services=ToolServices(
                     engine=engine,
                     sandbox=sandbox if self._role == "main" else None,
-                    artifacts=ArtifactStore(engine, pathlib.Path(settings.artifacts_dir)),
+                    artifacts=artifacts,
+                    browser=browser,
                 ),
                 publisher=publisher,
                 approvals=PostgresApprovalStore(engine),
@@ -90,6 +95,7 @@ class WorkerProcess:
             TopicActivities(engine),
             SandboxActivities(engine, sandbox),
             ApprovalActivities(engine),
+            BrowserActivities(engine, browser, publisher) if browser else None,
         )
         reporter = HeartbeatReporter(
             engine, self._probes(http), settings.heartbeat_interval_seconds
@@ -110,6 +116,8 @@ class WorkerProcess:
             stop.set()
             await worker.shutdown()
             await reporter_task
+            if browser:
+                await browser.stop()
             await http.aclose()
             await engine.dispose()
             logger.info("worker_stopped", role=self._role)
@@ -123,6 +131,7 @@ class WorkerProcess:
         topics: TopicActivities,
         sandboxes: SandboxActivities,
         approvals: ApprovalActivities,
+        browsers: BrowserActivities | None,
     ) -> Worker:
         if self._role == "model":
             # One local model: the queue serializes inference, no scheduler needed.
@@ -133,6 +142,9 @@ class WorkerProcess:
                 max_concurrent_activities=1,
                 interceptors=[HeartbeatInterceptor()],
             )
+        browser_activities: list[Callable[..., Any]] = (
+            [browsers.set_mode, browsers.human_input, browsers.close] if browsers else []
+        )
         # Agent activities are added by PydanticAIPlugin from the workflow's agents.
         return Worker(
             client,
@@ -150,6 +162,7 @@ class WorkerProcess:
                 sandboxes.release,
                 approvals.record_decision,
                 approvals.expire,
+                *browser_activities,
             ],
             interceptors=[HeartbeatInterceptor()],
         )

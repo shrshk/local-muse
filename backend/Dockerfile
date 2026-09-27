@@ -1,11 +1,13 @@
-# One image for backend, worker, worker-model and migrate; the command picks the process.
-FROM python:3.12-slim
+# One Python image; the command picks the process. The `worker` target adds Chromium, which only
+# the main worker needs (backend, worker-model and migrate stay slim).
+FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /usr/local/bin/uv
 
@@ -24,3 +26,9 @@ RUN uv sync --frozen --no-dev
 USER muse
 EXPOSE 8000
 CMD ["uvicorn", "muse.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
+FROM base AS worker
+USER root
+RUN playwright install --with-deps chromium && chmod -R a+rX /opt/playwright
+USER muse

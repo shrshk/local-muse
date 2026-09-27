@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useConversation } from '../hooks/useConversation';
 import type { Action, Conversation, Message } from '../types';
 import { ApprovalCard } from './ApprovalCard';
+import { BrowserViewer } from './BrowserViewer';
 import { ToolCallChip } from './ToolCallChip';
 import { TopicsPanel } from './TopicsPanel';
 
@@ -96,6 +97,9 @@ export function ChatPage() {
       </aside>
       <section className="chat__main">
         {state && <TopicsPanel topics={state.topics} onChange={() => void reload()} />}
+        {state?.browser_sessions
+          .filter((b) => b.status === 'open')
+          .map((b) => <BrowserViewer key={b.id} session={b} onChange={() => void reload()} />)}
         <div className="chat__log">
           {items.length === 0 && !busy && <p className="muted">Ask anything. Try: “What time is it in Tokyo?”</p>}
           {items.map((item) =>

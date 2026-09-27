@@ -32,6 +32,7 @@ PRIVILEGED
 | 7 | Runaway recursion / cost | No recursive agents; topic depth 1; max 3 topics per conversation; step limit per run; model queue concurrency 1 | 4 |
 | 8 | sandboxd API reached by something other than worker | Internal `sandbox-control` network (worker + sandboxd only) plus a bearer token from `.env` | 1 |
 | 9 | LAN or internet exposure | All published ports bind `127.0.0.1`; phone access only via Tailscale; no inbound Telegram webhook | 1, 10, 11 |
+| 10 | Prompt-injected page steers the browser to internal services (Temporal UI can terminate workflows; Ollama; sandboxd; cloud metadata) | Every browser request's host must resolve only to globally routable addresses (`browser/netguard.py`, Playwright route guard); only http/https URLs; tested against temporal-ui, host.docker.internal, sandboxd, loopback, 169.254.169.254, file:// | 7 |
 
 ## Residual risks (accepted for v1)
 
@@ -40,6 +41,9 @@ PRIVILEGED
   (Docker VM) compromise; keeping its API narrow is the control.
 - One Postgres superuser serves both the app and Temporal. Postgres is inside the trusted zone.
 - Credential encryption key lives in `.env`.
-- Browser escalation heuristics (Phase 8) are pattern-based and incomplete by design.
-- Before auth lands (Phase 2), anyone who can reach `127.0.0.1:8080` can read health and get a
-  Centrifugo connection token. Channels are not subscribable without later subscription rules.
+- Browser escalation heuristics are pattern-based and incomplete by design.
+- Browser network guard: DNS rebinding between the guard's lookup and Chromium's own lookup is
+  not closed; WebSocket connections are not routed through the guard. Both are known gaps.
+- Page content is untrusted input to the model (prompt injection). Mitigation is the policy
+  boundary, not the model: clicks need approval off the allowlist, external writes need approval.
+- Login has no rate limiting yet; the perimeter is loopback now and Tailscale in Phase 11.

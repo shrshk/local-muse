@@ -2,18 +2,29 @@
 
 from typing import Any
 
+from pydantic import BaseModel
+
+from muse.browser.controller import BrowserFacts
+from muse.browser.netguard import domain_of
 from muse.policy.classification import (
     Classification,
     DataClassification,
     RiskClass,
     SideEffectClass,
 )
-from muse.tools.executors import clock, outbox, profile, sandbox, topics
+from muse.tools.executors import browser, clock, outbox, profile, sandbox, topics
 from muse.tools.registry import ToolRegistry
-from muse.tools.schema import ExecContext, RetryPolicy, ToolSpec
+from muse.tools.schema import (
+    Classifier,
+    ExecContext,
+    Executor,
+    RetryPolicy,
+    ToolServices,
+    ToolSpec,
+)
 
 
-def _read_only(_: Any, __: ExecContext) -> Classification:
+def _read_only(_: Any, __: ExecContext, ___: ToolServices) -> Classification:
     return Classification(
         risk=RiskClass.READ_ONLY,
         side_effect=SideEffectClass.NONE,
@@ -21,7 +32,7 @@ def _read_only(_: Any, __: ExecContext) -> Classification:
     )
 
 
-def _local_mutation(_: Any, __: ExecContext) -> Classification:
+def _local_mutation(_: Any, __: ExecContext, ___: ToolServices) -> Classification:
     return Classification(
         risk=RiskClass.LOCAL_MUTATION,
         side_effect=SideEffectClass.NONE,
@@ -29,7 +40,7 @@ def _local_mutation(_: Any, __: ExecContext) -> Classification:
     )
 
 
-def _sandbox_write(_: Any, __: ExecContext) -> Classification:
+def _sandbox_write(_: Any, __: ExecContext, ___: ToolServices) -> Classification:
     return Classification(
         risk=RiskClass.LOCAL_MUTATION,
         side_effect=SideEffectClass.LOCAL_FILE_WRITE,
@@ -37,7 +48,7 @@ def _sandbox_write(_: Any, __: ExecContext) -> Classification:
     )
 
 
-def _sandbox_read(_: Any, __: ExecContext) -> Classification:
+def _sandbox_read(_: Any, __: ExecContext, ___: ToolServices) -> Classification:
     return Classification(
         risk=RiskClass.READ_ONLY,
         side_effect=SideEffectClass.NONE,
@@ -45,13 +56,124 @@ def _sandbox_read(_: Any, __: ExecContext) -> Classification:
     )
 
 
-def _message_send(args: Any, _: ExecContext) -> Classification:
+def _message_send(args: Any, _: ExecContext, ___: ToolServices) -> Classification:
     return Classification(
         risk=RiskClass.EXTERNAL_WRITE,
         side_effect=SideEffectClass.MESSAGE_SEND,
         data_classification=DataClassification.PERSONAL,
         destination=str(args.recipient),
     )
+
+
+BROWSER_MUTATIONS = {"browser.click", "browser.fill", "browser.press", "browser.download"}
+
+
+def _browser_classifier(tool: str) -> Classifier:
+    """Facts come from the controller's own state (context, page domain, element name), not the
+    model. `destination` is the target of a navigation, otherwise the current page's domain."""
+    mutation = tool in BROWSER_MUTATIONS
+
+    def classify(args: Any, ctx: ExecContext, services: ToolServices) -> Classification:
+        key = ctx.topic_id or ctx.conversation_id
+        element_id = getattr(args, "element_id", None)
+        facts = services.browser.facts(key, element_id) if services.browser else BrowserFacts()
+        url = getattr(args, "url", None)
+        context = getattr(args, "context", None) or facts.context
+        return Classification(
+            risk=RiskClass.LOCAL_MUTATION if mutation else RiskClass.READ_ONLY,
+            side_effect=SideEffectClass.NETWORK_WRITE if mutation else SideEffectClass.NETWORK_READ,
+            data_classification=(
+                DataClassification.AUTHENTICATED
+                if context == "authenticated"
+                else DataClassification.PUBLIC
+            ),
+            destination=domain_of(url) if url else facts.domain,
+            browser_context=context,
+            element_name=facts.element_name,
+        )
+
+    return classify
+
+
+def _browser_spec(
+    name: str,
+    description: str,
+    args_model: type[BaseModel],
+    executor: Executor,
+    *,
+    idempotent: bool = False,
+) -> ToolSpec:
+    return ToolSpec(
+        name=name,
+        description=description,
+        args_model=args_model,
+        classify=_browser_classifier(name),
+        executor=executor,
+        idempotent=idempotent,
+        retry=RetryPolicy(max_attempts=3 if idempotent else 1),
+    )
+
+
+def _browser_specs() -> list[ToolSpec]:
+    return [
+        _browser_spec(
+            "browser.open_session",
+            "Open your browser session (research context: no cookies). "
+            "Optional; navigate opens one.",
+            browser.OpenArgs,
+            browser.open_session,
+        ),
+        _browser_spec(
+            "browser.navigate",
+            "Open a public http(s) URL in your browser.",
+            browser.NavigateArgs,
+            browser.navigate,
+            idempotent=True,
+        ),
+        _browser_spec(
+            "browser.snapshot",
+            "Read the current page: title, text excerpt, and interactive elements with ids. "
+            "Element ids are only valid until the next snapshot or navigation.",
+            browser.NoArgs,
+            browser.snapshot,
+            idempotent=True,
+        ),
+        _browser_spec(
+            "browser.screenshot",
+            "Save a screenshot of the page as an artifact.",
+            browser.NoArgs,
+            browser.screenshot,
+            idempotent=True,
+        ),
+        _browser_spec(
+            "browser.click", "Click an element by id.", browser.ElementArgs, browser.click
+        ),
+        _browser_spec(
+            "browser.fill", "Type text into an input by id.", browser.FillArgs, browser.fill
+        ),
+        _browser_spec(
+            "browser.press", "Press a key on an element by id.", browser.PressArgs, browser.press
+        ),
+        _browser_spec(
+            "browser.scroll",
+            "Scroll the page up or down.",
+            browser.ScrollArgs,
+            browser.scroll,
+            idempotent=True,
+        ),
+        _browser_spec(
+            "browser.download",
+            "Download a file by clicking an element; saved as an artifact.",
+            browser.ElementArgs,
+            browser.download,
+        ),
+        _browser_spec(
+            "browser.close_session",
+            "Close your browser session.",
+            browser.NoArgs,
+            browser.close_session,
+        ),
+    ]
 
 
 def build_registry() -> ToolRegistry:
@@ -149,5 +271,6 @@ def build_registry() -> ToolRegistry:
                 classify=_sandbox_write,
                 executor=sandbox.stage_package,
             ),
+            *_browser_specs(),
         ]
     )

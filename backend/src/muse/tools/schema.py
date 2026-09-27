@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 if TYPE_CHECKING:
+    from muse.browser.controller import BrowserController
     from muse.modules.artifacts.store import ArtifactStore
     from muse.sandbox.client import SandboxClient
 
@@ -51,6 +52,7 @@ class ToolResult(BaseModel):
     output: JsonValue = None
     error: str | None = None
     pending_approval: uuid.UUID | None = None
+    deferred: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -65,10 +67,11 @@ class ToolServices:
     engine: AsyncEngine
     sandbox: "SandboxClient | None" = None
     artifacts: "ArtifactStore | None" = None
+    browser: "BrowserController | None" = None
 
 
 Executor = Callable[[Any, ExecContext, ToolServices], Awaitable[JsonValue]]
-Classifier = Callable[[Any, ExecContext], Classification]
+Classifier = Callable[[Any, ExecContext, "ToolServices"], Classification]
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel
 
 from muse.tools.approval_key import compute_approval_key
-from muse.tools.schema import ActionProposal, ExecContext, ToolSpec
+from muse.tools.schema import ActionProposal, ExecContext, ToolServices, ToolSpec
 
 
 class ToolRegistry:
@@ -24,8 +24,10 @@ class ToolRegistry:
     def specs(self) -> list[ToolSpec]:
         return list(self._specs.values())
 
-    def propose(self, spec: ToolSpec, args: BaseModel, ctx: ExecContext) -> ActionProposal:
-        classification = spec.classify(args, ctx)
+    def propose(
+        self, spec: ToolSpec, args: BaseModel, ctx: ExecContext, services: ToolServices
+    ) -> ActionProposal:
+        classification = spec.classify(args, ctx, services)
         canonical_args = args.model_dump(mode="json")
         credential_ref = None
         return ActionProposal(

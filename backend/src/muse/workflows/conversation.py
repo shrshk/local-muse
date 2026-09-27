@@ -15,7 +15,7 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, CancelledError, ChildWorkflowError
 
-from muse.workflows.approvals import ApprovalGate, run_with_approvals
+from muse.workflows.approvals import ApprovalGate, BrowserModes, run_with_approvals
 from muse.workflows.topic import TopicWorkflow
 
 with workflow.unsafe.imports_passed_through():
@@ -33,6 +33,12 @@ with workflow.unsafe.imports_passed_through():
     from pydantic_ai.usage import UsageLimits
 
     from muse.activities.approvals import ApprovalActivities, ApprovalDecisionInput
+    from muse.activities.browser import (
+        BrowserActivities,
+        BrowserCloseInput,
+        BrowserHumanInputInput,
+        BrowserModeInput,
+    )
     from muse.activities.conversation import ConversationActivities
     from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
@@ -81,6 +87,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
         self._active_topics: dict[uuid.UUID, TopicStart] = {}
         self._watchers: set[asyncio.Task[None]] = set()
         self._gate = ApprovalGate()
+        self._browsers = BrowserModes()
 
     @workflow.run
     async def run(self, state: ConversationState) -> None:
@@ -144,6 +151,31 @@ class ConversationWorkflow(PydanticAIWorkflow):
     def _validate_decision(self, decision: ApprovalDecisionInput) -> None:
         self._gate.check(decision.approval_id)
 
+    @workflow.update
+    async def set_browser_mode(self, request: BrowserModeInput) -> None:
+        await workflow.execute_activity_method(
+            BrowserActivities.set_mode,
+            request,
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
+        self._browsers.set(request.session_id, request.mode)
+
+    @workflow.update
+    async def browser_human_input(self, request: BrowserHumanInputInput) -> dict[str, Any]:
+        result: dict[str, Any] = await workflow.execute_activity_method(
+            BrowserActivities.human_input,
+            request,
+            start_to_close_timeout=timedelta(seconds=60),
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+        return result
+
+    @browser_human_input.validator
+    def _validate_human_input(self, request: BrowserHumanInputInput) -> None:
+        if not self._browsers.is_human(request.session_id):
+            raise ValueError("take control of the browser first")
+
     @workflow.query
     def status(self) -> ConversationStatus:
         return ConversationStatus(
@@ -151,6 +183,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
             pending_turn_ids=[t.turn_id for t in self._queue],
             active_topic_ids=list(self._active_topics),
             waiting_approval_ids=self._gate.waiting(),
+            browser_modes=self._browsers.as_dict(),
             last_error=self._last_error,
         )
 
@@ -192,6 +225,7 @@ class ConversationWorkflow(PydanticAIWorkflow):
                 self._gate,
                 announce,
                 timedelta(seconds=self._state.approval_timeout_s),
+                self._browsers,
             )
         except (AgentRunError, ActivityError) as exc:
             self._last_error = type(exc).__name__
@@ -351,6 +385,12 @@ class ConversationWorkflow(PydanticAIWorkflow):
             workflow.logger.warning("realtime_event_dropped", extra={"event_type": event_type})
 
     async def _release_sandbox(self) -> None:
+        await workflow.execute_activity_method(
+            BrowserActivities.close,
+            BrowserCloseInput(session_id=self._state.conversation_id),
+            start_to_close_timeout=PERSIST_TIMEOUT,
+            retry_policy=PERSIST_RETRY,
+        )
         await workflow.execute_activity_method(
             SandboxActivities.release,
             ReleaseSandboxInput(sandbox_id=self._state.conversation_id),

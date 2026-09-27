@@ -15,7 +15,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import BYTEA, JSONB, UUID
 
 metadata = MetaData()
 
@@ -248,4 +248,36 @@ outbox = Table(
     Column("recipient", Text, nullable=False),
     Column("body", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+browser_sessions = Table(
+    "browser_sessions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("topic_id", UUID(as_uuid=True)),
+    Column("workflow_id", Text, nullable=False),
+    Column("context", Text, nullable=False),
+    Column("mode", Text, nullable=False, server_default=text("'agent'")),
+    Column("current_url", Text),
+    Column("status", Text, nullable=False),
+    Column("frame_version", Integer, nullable=False, server_default=text("0")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Index("ix_browser_sessions_conversation", "conversation_id"),
+)
+
+browser_frames = Table(
+    "browser_frames",
+    metadata,
+    Column(
+        "session_id",
+        UUID(as_uuid=True),
+        ForeignKey("browser_sessions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("version", Integer, nullable=False),
+    Column("jpeg", BYTEA, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

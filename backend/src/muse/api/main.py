@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from muse.api.routers import (
     approvals,
     auth,
+    browser,
     conversations,
     health,
     memory,
@@ -19,6 +20,7 @@ from muse.api.routers import (
 from muse.models.factory import build_provider
 from muse.modules.approvals.approvals_handler import ApprovalsHandler
 from muse.modules.auth.auth_handler import AuthHandler
+from muse.modules.browser.browser_handler import AllowlistHandler, BrowserHandler
 from muse.modules.conversations.conversations_handler import ConversationsHandler
 from muse.modules.health.health_handler import HealthHandler
 from muse.modules.health.probes import CentrifugoProbe, ModelProbe, PostgresProbe, TemporalProbe
@@ -60,6 +62,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.topics_handler = TopicsHandler(engine, temporal)
     app.state.profile_memory_handler = ProfileMemoryHandler(engine)
     app.state.approvals_handler = ApprovalsHandler(engine, temporal)
+    app.state.browser_handler = BrowserHandler(engine, temporal)
+    app.state.allowlist_handler = AllowlistHandler(engine)
     logger.info("backend_ready", model=settings.model_name, mode=settings.local_muse_mode)
     yield
     await provider.aclose()
@@ -74,6 +78,7 @@ for router in (
     conversations.router,
     topics.router,
     approvals.router,
+    browser.router,
     memory.router,
     models.router,
     realtime.router,

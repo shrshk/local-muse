@@ -38,7 +38,7 @@ iPhone PWA / Mac browser ── Tailscale ──▶ web (nginx: static PWA, /api
 |---|---|---|---|
 | web | `apps/web` (nginx) | Static PWA; reverse proxy for `/api` and `/connection` | default |
 | backend | `backend` | HTTP API, auth, Temporal client, Centrifugo tokens, Telegram poller | default |
-| worker | `backend` | Temporal worker: workflows, tools, policy, browser, sandbox client | default, sandbox-control |
+| worker | `backend` (target `worker`, + Chromium) | Temporal worker: workflows, tools, policy, browser, sandbox client | default, sandbox-control |
 | worker-model | `backend` | Temporal worker for `model-inference` only, concurrency 1 | default |
 | sandboxd | `sandboxd` | Only holder of the Docker socket; narrow sandbox API | sandbox-control (internal) |
 | postgres | postgres:16 | App DB `muse`; Temporal DBs `temporal`, `temporal_visibility` | default |
@@ -70,8 +70,9 @@ backend/src/muse/
   activities/     conversation persistence / publish activities
   realtime/       Centrifugo publisher (seq from Postgres)
   memory/         context construction (token budget), secret heuristic
+  browser/        Playwright controller, snapshot (the only page-JS), network guard
   # later phases, per spec §26:
-  browser/ notifications/
+  notifications/
 sandboxd/src/sandboxd/   separate package and image
 apps/web/                Vite + React + TypeScript PWA
 infra/                   compose, centrifugo, temporal, nginx config
@@ -168,3 +169,22 @@ Spec §18: single owner, password login, session cookie. Landed in Phase 2.
   (model queue, no tools, no token streaming) after the reply and stores
   `conversation_summaries(up_to_seq, content)`. Later turns start history after `up_to_seq`.
   Best effort: a failed summary only shortens context.
+
+## Browser (Phase 7)
+
+- `BrowserController` lives in the main worker process: one Chromium, one context + page per
+  session (keyed by topic, or conversation for the coordinator). Research contexts are fresh
+  contexts with no storage. Sessions are not durable; after a worker restart the model is told
+  to navigate again. A single main worker holds all sessions (more workers would need sticky
+  routing).
+- Tools: open/close session, navigate, snapshot, screenshot, click, fill, press, scroll,
+  download. Snapshot returns interactive elements with per-snapshot ids plus a text excerpt;
+  stale ids are errors. Screenshots and downloads become artifacts.
+- Classification reads trusted facts from the controller: context, page domain, element name.
+- Frames: a JPEG after every action (agent or human) stored in `browser_frames` (one row per
+  session); `browser.frame {frame_version}` on `browser:<id>`; clients fetch
+  `/api/browser/{id}/frame?v=`.
+- Takeover: `set_browser_mode` Update on the owning workflow; while `human`, browser tools
+  raise `ToolDeferred` → `CallDeferred`, the run pauses, and the workflow waits until the mode is
+  `agent`, then tells the model to re-snapshot. Human input (`browser_human_input` Update →
+  `browser.human_input` activity) is audited and bypasses policy (the human is the authority).

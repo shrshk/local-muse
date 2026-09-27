@@ -1,4 +1,5 @@
 import type {
+  AllowlistEntry,
   Approval,
   ConnectionToken,
   Conversation,
@@ -69,4 +70,15 @@ export const api = {
     }),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
+  subscribeBrowserToken: (sessionId: string) =>
+    post<ConnectionToken>('/api/realtime/subscribe_token', { browser_session_id: sessionId }),
+  setBrowserMode: (sessionId: string, mode: 'agent' | 'human') =>
+    post<void>(`/api/browser/${sessionId}/mode`, { mode }),
+  browserInput: (sessionId: string, input: Record<string, string | number>) =>
+    post<{ url: string; title: string }>(`/api/browser/${sessionId}/input`, input),
+  allowlist: () => request<AllowlistEntry[]>('/api/allowlist'),
+  addAllowlist: (domain: string) =>
+    request<void>('/api/allowlist', { method: 'PUT', body: JSON.stringify({ domain }) }),
+  removeAllowlist: (domain: string) =>
+    request<void>(`/api/allowlist/${encodeURIComponent(domain)}`, { method: 'DELETE' }),
 };

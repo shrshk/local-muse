@@ -7,12 +7,13 @@ cancellation is delivered; later phases also destroy the sandbox and close the b
 import asyncio
 import uuid
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
-from muse.workflows.approvals import ApprovalGate, run_with_approvals
+from muse.workflows.approvals import ApprovalGate, BrowserModes, run_with_approvals
 
 with workflow.unsafe.imports_passed_through():
     import annotated_types  # noqa: F401  # pydantic imports it lazily; keep it out of the sandbox
@@ -22,6 +23,12 @@ with workflow.unsafe.imports_passed_through():
     from pydantic_ai.usage import UsageLimits
 
     from muse.activities.approvals import ApprovalActivities, ApprovalDecisionInput
+    from muse.activities.browser import (
+        BrowserActivities,
+        BrowserCloseInput,
+        BrowserHumanInputInput,
+        BrowserModeInput,
+    )
     from muse.activities.conversation import ConversationActivities
     from muse.activities.sandbox import ReleaseSandboxInput, SandboxActivities
     from muse.activities.topics import TopicActivities
@@ -46,6 +53,7 @@ class TopicWorkflow(PydanticAIWorkflow):
 
     def __init__(self) -> None:
         self._gate = ApprovalGate()
+        self._browsers = BrowserModes()
 
     @workflow.update
     async def decide_approval(self, decision: ApprovalDecisionInput) -> bool:
@@ -64,13 +72,45 @@ class TopicWorkflow(PydanticAIWorkflow):
     def _validate_decision(self, decision: ApprovalDecisionInput) -> None:
         self._gate.check(decision.approval_id)
 
+    @workflow.update
+    async def set_browser_mode(self, request: BrowserModeInput) -> None:
+        await workflow.execute_activity_method(
+            BrowserActivities.set_mode,
+            request,
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=ACTIVITY_RETRY,
+        )
+        self._browsers.set(request.session_id, request.mode)
+
+    @workflow.update
+    async def browser_human_input(self, request: BrowserHumanInputInput) -> dict[str, Any]:
+        result: dict[str, Any] = await workflow.execute_activity_method(
+            BrowserActivities.human_input,
+            request,
+            start_to_close_timeout=timedelta(seconds=60),
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
+        return result
+
+    @browser_human_input.validator
+    def _validate_human_input(self, request: BrowserHumanInputInput) -> None:
+        if not self._browsers.is_human(request.session_id):
+            raise ValueError("take control of the browser first")
+
     @workflow.run
     async def run(self, topic: TopicInput) -> TopicResult:
         self._topic = topic
         try:
             return await self._work(topic)
         finally:
-            # Always, including on cancellation: the container goes, the workspace volume stays.
+            # Always, including on cancellation: the browser closes, the sandbox container goes,
+            # the workspace volume stays.
+            await workflow.execute_activity_method(
+                BrowserActivities.close,
+                BrowserCloseInput(session_id=topic.topic_id),
+                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                retry_policy=ACTIVITY_RETRY,
+            )
             await workflow.execute_activity_method(
                 SandboxActivities.release,
                 ReleaseSandboxInput(sandbox_id=topic.topic_id),
@@ -108,6 +148,7 @@ class TopicWorkflow(PydanticAIWorkflow):
                 self._gate,
                 self._announce,
                 timedelta(seconds=topic.approval_timeout_s),
+                self._browsers,
             )
         except asyncio.CancelledError:
             await self._finish(FinishTopicInput(topic_id=topic.topic_id, status="cancelled"))

@@ -64,7 +64,11 @@ class PostgresActionRecorder:
             topic_id=proposal.topic_id,
             actor_id=proposal.actor_id,
         )
-        event = "action.executed" if result.ok else "action.failed"
+        event = (
+            "action.executed"
+            if result.ok
+            else ("action.deferred" if result.deferred else "action.failed")
+        )
         async with self._engine.begin() as conn:
             await ActionsController(conn).record_result(proposal.action_id, result)
             await AuditController(conn).record(

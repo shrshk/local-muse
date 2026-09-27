@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
 
 import { api } from '../api';
-import type { ProfileFact } from '../types';
+import type { AllowlistEntry, ProfileFact } from '../types';
 
 function FactRow({ fact, onChange }: { fact: ProfileFact; onChange: () => void }) {
   const [value, setValue] = useState(fact.value);
@@ -39,6 +39,60 @@ function FactRow({ fact, onChange }: { fact: ProfileFact; onChange: () => void }
       </div>
       {error && <p className="form__error">{error}</p>}
     </li>
+  );
+}
+
+function TrustedSites() {
+  const [entries, setEntries] = useState<AllowlistEntry[]>([]);
+  const [domain, setDomain] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => setEntries(await api.allowlist()), []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const add = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.addAllowlist(domain.trim().toLowerCase());
+      setDomain('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <section>
+      <h3 className="section-title">Trusted sites</h3>
+      <p className="page__sub">
+        In research browsing, clicks and typing on these domains (and their subdomains) run without
+        asking. Buttons that look consequential (buy, send, delete…) still ask.
+      </p>
+      <form className="card form fact-form" onSubmit={add}>
+        <input placeholder="docs.python.org" value={domain} onChange={(e) => setDomain(e.target.value)} />
+        <button type="submit" disabled={!domain.trim()}>
+          Trust
+        </button>
+        {error && <p className="form__error">{error}</p>}
+      </form>
+      <ul className="facts">
+        {entries.length === 0 && <p className="muted">None. Every research click asks first.</p>}
+        {entries.map((entry) => (
+          <li key={entry.domain} className="fact fact__row">
+            <code>{entry.domain}</code>
+            <button
+              className="link"
+              onClick={() => void api.removeAllowlist(entry.domain).then(load)}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -86,6 +140,7 @@ export function MemoryPage() {
           <FactRow key={`${f.key}:${f.updated_at}`} fact={f} onChange={() => void load()} />
         ))}
       </ul>
+      <TrustedSites />
     </main>
   );
 }

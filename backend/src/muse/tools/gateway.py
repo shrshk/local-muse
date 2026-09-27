@@ -14,7 +14,7 @@ from muse.modules.approvals.approvals_schema import ApprovalStatus
 from muse.policy.engine import Decision, DecisionKind, PolicyEngine
 from muse.shared.logger import get_logger
 from muse.tools.approvals import ApprovalStore
-from muse.tools.errors import ToolExecutionError
+from muse.tools.errors import ToolDeferred, ToolExecutionError
 from muse.tools.recorder import ActionRecorder
 from muse.tools.registry import ToolRegistry
 from muse.tools.schema import (
@@ -65,7 +65,7 @@ class ToolGateway:
             )
             raise InvalidToolArgs(_summarize(exc)) from exc
 
-        proposal = self._registry.propose(spec, args, self._ctx)
+        proposal = self._registry.propose(spec, args, self._ctx, self._services)
         decision = await self._policy.evaluate(proposal, self._ctx)
 
         if decision.kind is DecisionKind.REQUIRE_APPROVAL:
@@ -133,6 +133,8 @@ class ToolGateway:
             output = await executor(args, ctx, self._services)
         except ToolExecutionError as exc:
             return ToolResult(ok=False, error=str(exc))
+        except ToolDeferred as exc:
+            return ToolResult(ok=False, error=str(exc), deferred=exc.metadata)
         return ToolResult(ok=True, output=output)
 
 

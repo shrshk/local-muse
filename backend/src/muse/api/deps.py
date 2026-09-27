@@ -6,6 +6,7 @@ from muse.models.provider import ModelProvider
 from muse.modules.approvals.approvals_handler import ApprovalsHandler
 from muse.modules.auth.auth_handler import SESSION_COOKIE, AuthHandler, InvalidSession
 from muse.modules.auth.auth_schema import Principal
+from muse.modules.browser.browser_handler import AllowlistHandler, BrowserHandler
 from muse.modules.conversations.conversations_handler import ConversationsHandler
 from muse.modules.health.health_handler import HealthHandler
 from muse.modules.memory.memory_handler import ProfileMemoryHandler
@@ -45,6 +46,16 @@ def profile_memory_handler(request: Request) -> ProfileMemoryHandler:
 
 def approvals_handler(request: Request) -> ApprovalsHandler:
     handler: ApprovalsHandler = request.app.state.approvals_handler
+    return handler
+
+
+def browser_handler(request: Request) -> BrowserHandler:
+    handler: BrowserHandler = request.app.state.browser_handler
+    return handler
+
+
+def allowlist_handler(request: Request) -> AllowlistHandler:
+    handler: AllowlistHandler = request.app.state.allowlist_handler
     return handler
 
 

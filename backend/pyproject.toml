@@ -19,6 +19,7 @@ dependencies = [
     "argon2-cffi>=25.1",
     "tzdata>=2026.4",
     "email-validator>=2.3",
+    "playwright>=1.63",
 ]
 
 [dependency-groups]

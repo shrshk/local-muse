@@ -14,6 +14,7 @@ from temporalio.service import RPCError, RPCStatusCode
 from muse.modules.actions.actions_controller import ActionsController
 from muse.modules.actions.actions_schema import ActionView
 from muse.modules.approvals.approvals_controller import ApprovalsController
+from muse.modules.browser.browser_controller import BrowserSessionsController
 from muse.modules.conversations.conversations_controller import (
     ConversationsController,
     MessagesController,
@@ -102,6 +103,9 @@ class ConversationsHandler:
             approvals = await ApprovalsController(conn).list_for_user(
                 user_id, conversation_id=conversation_id
             )
+            browsers = await BrowserSessionsController(conn).list_for_conversation(
+                conversation_id, user_id
+            )
         return ConversationStateView(
             conversation=conversation,
             seq=seq,
@@ -109,6 +113,7 @@ class ConversationsHandler:
             actions=actions,
             topics=topics,
             approvals=approvals,
+            browser_sessions=browsers,
             status=await self._status(conversation_id),
         )
 

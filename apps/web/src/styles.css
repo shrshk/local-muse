@@ -129,3 +129,15 @@ button.link { border: none; background: none; color: var(--muted); padding: 4px;
 .badge--approved { color: var(--online); }
 .badge--denied, .badge--expired { color: var(--offline); }
 .shell__head nav { overflow-x: auto; }
+
+.browser { border-bottom: 1px solid var(--border); background: var(--surface); padding: 8px 16px; display: grid; gap: 8px; }
+.browser--human { box-shadow: inset 3px 0 0 var(--degraded); }
+.browser__bar { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; min-width: 0; }
+.browser__url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; }
+.browser__handback { border-color: var(--degraded); }
+.browser__frame { width: 100%; max-height: 40dvh; object-fit: contain; object-position: top left; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.browser--human .browser__frame { cursor: crosshair; }
+.browser__controls { display: grid; gap: 6px; }
+.browser__controls form, .browser__scroll { display: flex; gap: 6px; }
+.browser__controls input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+.fact__row { display: flex; justify-content: space-between; align-items: center; }

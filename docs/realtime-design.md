@@ -82,3 +82,10 @@ The client fetches `GET /api/browser/{session_id}/frame?v=412` (JPEG). ~2 fps ca
 - Web client (`hooks/useConversation.ts`): drop `seq <= last`; refetch on a gap; append tokens,
   resetting the partial text when `attempt` increases; refetch state on any event that changes
   durable state and on every (re)subscribe.
+
+## Browser channel (Phase 7)
+
+`browser:{session_id}` carries `browser.frame {session_id, frame_version, url}` and
+`browser.mode`. Subscription tokens via `POST /api/realtime/subscribe_token
+{browser_session_id}` after an ownership check. `browser.mode` is also published on the
+conversation channel so the chat refreshes.

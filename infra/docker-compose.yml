@@ -16,7 +16,9 @@ x-app-env: &app-env
 
 x-app-image: &app-image
   image: local-muse-backend:local
-  build: ../backend
+  build:
+    context: ../backend
+    target: base
 
 x-worker-healthcheck: &worker-healthcheck
   test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 30"]
@@ -119,8 +121,13 @@ services:
       retries: 12
 
   worker:
-    <<: *app-image
+    # Same code as the other Python services, plus Chromium for the browser tools.
+    image: local-muse-worker:local
+    build:
+      context: ../backend
+      target: worker
     command: ["python", "-m", "muse.worker", "--role", "main"]
+    shm_size: 256m
     environment:
       <<: *app-env
       SANDBOXD_URL: http://sandboxd:8080

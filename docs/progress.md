@@ -12,7 +12,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | — Memory step (spec §15) | done |
 | 5 sandboxd + sandbox | done |
 | 6 Policy rules + approvals | done |
-| 7 Browser | not started |
+| 7 Browser | done |
 | 8 Authenticated browser | not started |
 | 9 Goals | not started |
 | 10 Telegram | not started |
@@ -317,8 +317,50 @@ Known limitations:
 - Domain allowlist has no UI yet (Phase 7, where browser tools use it).
 - Approvals are decided in the web UI only; Telegram buttons arrive in Phase 10.
 
+## Phase 7 — Browser
+
+Done 2026-09-27.
+
+What works:
+
+- Chromium (Playwright 1.63, Chromium 153) in a `worker` image target; research contexts with no
+  cookies; the full `browser.*` surface and nothing else; accessibility-style snapshots with
+  per-snapshot element ids; screenshots and downloads as artifacts.
+- Network guard: only public internet hosts, only http/https.
+- Click/fill/press classified with trusted facts; domain allowlist API + "Trusted sites" UI.
+- Live viewer (JPEG frames per action, version events on `browser:<id>`), human takeover with
+  click/type/Enter/scroll/navigate controls, agent pauses and resumes.
+
+Acceptance evidence (live, `tests/integration/test_browser.py`):
+
+- Research task: model navigated example.com, snapshotted, answered "Example Domain"; frame
+  stored.
+- No arbitrary JS: boundary tests assert the browser surface is exactly the spec list, no tool
+  name mentions eval/script/cdp/js, only `browser/` imports Playwright, and page-script calls
+  exist only in `browser/snapshot.py`.
+- Click on example.com's link → pending approval (`browser.click`, destination example.com);
+  after adding example.com to the allowlist, the same click runs and the link is followed.
+- Takeover: human input refused without control (409); take control; human navigates to IANA;
+  the agent's next browser call is `deferred`, no browser action executes while the human has
+  control, the turn stays open; hand back → the agent acts again and finishes.
+- Guard: temporal-ui, host.docker.internal (Ollama), sandboxd, 127.0.0.1, 169.254.169.254 and
+  file:// all refused.
+- Browser (headless Chrome): viewer shows the live frame and URL; Take control → navigate via URL
+  bar → frame updates; click on frame; Hand back; trusted site add/remove; no console errors.
+
+Known limitations:
+
+- Browser sessions do not survive a worker restart (the model is told to navigate again).
+- Frames update per action, not continuously (no animation while idle).
+- DNS rebinding and WebSocket gaps in the network guard (threat-model.md).
+- Authenticated browsing is Phase 8.
+
 ## Decisions log
 
+- 2026-09-27: Browser network guard added (not in the spec): internal services are reachable from
+  the worker network, so the browser must be kept to public hosts.
+- 2026-09-27: Human takeover reuses the deferred-tool pause (`CallDeferred`), so the wait is the
+  same durable mechanism as approvals.
 - 2026-09-27: Approval waits use PydanticAI deferred tools (`ApprovalRequired` →
   `DeferredToolRequests` → re-run with `DeferredToolResults`); the gateway, not the model or the
   run context, decides whether an approval authorizes a call.

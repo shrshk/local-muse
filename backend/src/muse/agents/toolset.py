@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import JsonValue
 from pydantic_ai import ModelRetry, RunContext, Tool
-from pydantic_ai.exceptions import ApprovalRequired
+from pydantic_ai.exceptions import ApprovalRequired, CallDeferred
 from pydantic_ai.toolsets import FunctionToolset
 from temporalio.common import RetryPolicy
 from temporalio.workflow import ActivityConfig
@@ -40,6 +40,9 @@ def _gateway_tool(spec: ToolSpec) -> Tool[AgentDeps]:
             result = await gateway.invoke(ToolIntent(tool=tool_name, args=kwargs))
         except InvalidToolArgs as exc:
             raise ModelRetry(str(exc)) from exc
+        if result.deferred is not None:
+            # A human has the browser; the workflow waits for control to come back.
+            raise CallDeferred(metadata=result.deferred)
         if result.pending_approval is not None:
             # The run pauses here; the workflow waits for the human and re-runs with the answer.
             raise ApprovalRequired(metadata={"approval_id": str(result.pending_approval)})

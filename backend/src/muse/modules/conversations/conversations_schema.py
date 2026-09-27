@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from muse.modules.actions.actions_schema import ActionView
 from muse.modules.approvals.approvals_schema import ApprovalView
+from muse.modules.browser.browser_schema import BrowserSessionView
 from muse.modules.topics.topics_schema import TopicView
 from muse.workflows.schema import ConversationStatus
 
@@ -46,4 +47,5 @@ class ConversationStateView(BaseModel):
     actions: list[ActionView]
     topics: list[TopicView]
     approvals: list[ApprovalView]
+    browser_sessions: list[BrowserSessionView]
     status: ConversationStatus

@@ -74,3 +74,61 @@ def test_agents_reach_tools_only_via_gateway_invoke():
                 assert all(a.name == "ToolRegistry" for a in node.names), rel
             if isinstance(node, ast.Attribute):
                 assert node.attr not in {"propose", "evaluate", "record_decision"}, rel
+
+
+BROWSER_SURFACE = {
+    "browser.open_session",
+    "browser.navigate",
+    "browser.snapshot",
+    "browser.screenshot",
+    "browser.click",
+    "browser.fill",
+    "browser.press",
+    "browser.scroll",
+    "browser.download",
+    "browser.close_session",
+}
+SCRIPT_RUNNERS = {
+    "evaluate",
+    "evaluate_handle",
+    "add_init_script",
+    "expose_function",
+    "new_cdp_session",
+}
+SCRIPT_ALLOWED_IN = {"browser/snapshot.py"}
+
+
+def test_the_browser_surface_is_exactly_the_spec_list():
+    from muse.tools.specs import build_registry
+
+    names = {s.name for s in build_registry().specs() if s.name.startswith("browser.")}
+    assert names == BROWSER_SURFACE
+    assert not any(
+        word in s.name for s in build_registry().specs() for word in ("eval", "script", "cdp", "js")
+    )
+
+
+def imports_playwright(tree: ast.Module) -> bool:
+    return any(
+        (isinstance(n, ast.ImportFrom) and (n.module or "").startswith("playwright"))
+        or (isinstance(n, ast.Import) and any(a.name.startswith("playwright") for a in n.names))
+        for n in ast.walk(tree)
+    )
+
+
+def test_page_scripts_run_only_in_the_trusted_snapshot_module():
+    offenders = [
+        f"{rel}:{node.lineno}"
+        for rel, tree in modules()
+        if imports_playwright(tree)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in SCRIPT_RUNNERS
+        and rel not in SCRIPT_ALLOWED_IN
+    ]
+    assert offenders == []
+
+
+def test_only_the_browser_package_touches_playwright():
+    users = {rel for rel, tree in modules() if imports_playwright(tree)}
+    assert users <= {"browser/controller.py", "browser/snapshot.py"}, users

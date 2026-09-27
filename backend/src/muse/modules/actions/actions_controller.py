@@ -43,7 +43,7 @@ class ActionsController:
             update(actions)
             .where(actions.c.action_id == action_id)
             .values(
-                status="executed" if result.ok else "failed",
+                status="executed" if result.ok else ("deferred" if result.deferred else "failed"),
                 result=result.model_dump(mode="json"),
                 executed_at=func.now(),
             )
