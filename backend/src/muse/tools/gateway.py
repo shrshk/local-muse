@@ -100,10 +100,10 @@ class ToolGateway:
         if existing is not None and existing.status is ApprovalStatus.APPROVED:
             original = proposal.model_copy(update={"action_id": existing.action_id})
             if await self._approvals.consume(existing.id):
-                return await self._run(spec, args, original)
+                return await self._run(spec, args, original, approved=True)
             if not existing.has_result and spec.idempotent:
                 # Retry after a crash mid-execution: same action_id, executor dedupes on it.
-                return await self._run(spec, args, original)
+                return await self._run(spec, args, original, approved=True)
             if not existing.has_result:
                 return ToolResult(
                     ok=False, error="outcome unknown; a non-idempotent action is not retried"
@@ -120,15 +120,17 @@ class ToolGateway:
         )
         return ToolResult(ok=False, pending_approval=approval_id, error="awaiting approval")
 
-    async def _run(self, spec: ToolSpec, args: BaseModel, proposal: ActionProposal) -> ToolResult:
-        result = await self._execute(spec.executor, args, proposal.action_id)
+    async def _run(
+        self, spec: ToolSpec, args: BaseModel, proposal: ActionProposal, approved: bool = False
+    ) -> ToolResult:
+        result = await self._execute(spec.executor, args, proposal.action_id, approved)
         await self._recorder.record_result(proposal, result)
         return result
 
     async def _execute(
-        self, executor: Executor, args: BaseModel, action_id: uuid.UUID
+        self, executor: Executor, args: BaseModel, action_id: uuid.UUID, approved: bool
     ) -> ToolResult:
-        ctx = dataclasses.replace(self._ctx, action_id=action_id)
+        ctx = dataclasses.replace(self._ctx, action_id=action_id, approved=approved)
         try:
             output = await executor(args, ctx, self._services)
         except ToolExecutionError as exc:

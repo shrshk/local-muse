@@ -24,6 +24,7 @@ from muse.agents.instances import AGENTS
 from muse.agents.runtime import AgentRuntime, configure_agent_runtime
 from muse.browser.controller import BrowserController
 from muse.modules.artifacts.store import ArtifactStore
+from muse.modules.browser.taint import PostgresTaintStore
 from muse.modules.health.probes import Probe, ProcessProbe, SandboxdProbe
 from muse.policy.engine import PolicyEngine
 from muse.realtime.publisher import RealtimePublisher
@@ -73,11 +74,17 @@ class WorkerProcess:
         publisher = RealtimePublisher(engine, http, settings)
         sandbox = SandboxClient(http, settings)
         artifacts = ArtifactStore(engine, pathlib.Path(settings.artifacts_dir))
-        browser = BrowserController(engine, artifacts, publisher) if self._role == "main" else None
+        browser = (
+            BrowserController(
+                engine, artifacts, publisher, pathlib.Path(settings.browser_profile_dir)
+            )
+            if self._role == "main"
+            else None
+        )
         configure_agent_runtime(
             AgentRuntime(
                 registry=build_registry(),
-                policy=PolicyEngine(PostgresDomainAllowlist(engine)),
+                policy=PolicyEngine(PostgresDomainAllowlist(engine), PostgresTaintStore(engine)),
                 recorder=PostgresActionRecorder(engine),
                 services=ToolServices(
                     engine=engine,

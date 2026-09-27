@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     sandboxd_url: str = "http://sandboxd:8080"
     sandboxd_token: str = Field(default="", repr=False)
     artifacts_dir: str = "/data/artifacts"
+    browser_profile_dir: str = "/data/browser-profile"
 
     local_muse_mode: Literal["offline", "hybrid", "cloud"] = "offline"
     model_provider: Literal["ollama"] = "ollama"

@@ -142,3 +142,51 @@ CASES = [
 async def test_rule_table(name: str, action: ActionProposal, expected: DecisionKind):
     decision = await PolicyEngine(Allowlist("docs.python.org")).evaluate(action, make_ctx())
     assert decision.kind is expected, decision
+
+
+class Taint:
+    def __init__(self, tainted: bool, artifact: str | None = None) -> None:
+        self.tainted = tainted
+        self.artifact = artifact
+
+    async def is_tainted(self, conversation_id: uuid.UUID) -> bool:
+        return self.tainted
+
+    async def artifact_classification(self, artifact_id: uuid.UUID) -> str | None:
+        return self.artifact
+
+
+SANDBOX_WRITE = {"risk": RiskClass.LOCAL_MUTATION, "side_effect": SideEffectClass.LOCAL_FILE_WRITE}
+
+
+@pytest.mark.parametrize("tool", ["sandbox.write_file", "sandbox.exec", "profile.remember"])
+async def test_tainted_conversations_need_approval_to_write_to_sandbox_or_memory(tool: str):
+    action = proposal(tool, **SANDBOX_WRITE)
+    clean = await PolicyEngine(taint=Taint(False)).evaluate(action, make_ctx())
+    tainted = await PolicyEngine(taint=Taint(True)).evaluate(action, make_ctx())
+    assert clean.kind is ALLOW
+    assert tainted.kind is APPROVE and tainted.rule == "authenticated_taint"
+
+
+async def test_reading_the_sandbox_stays_allowed_after_taint():
+    action = proposal("sandbox.read_file")
+    assert (await PolicyEngine(taint=Taint(True)).evaluate(action, make_ctx())).kind is ALLOW
+
+
+async def test_staging_an_authenticated_artifact_needs_approval_even_when_clean():
+    action = proposal("sandbox.stage", args={"artifact_id": str(uuid.uuid4())}, **SANDBOX_WRITE)
+    decision = await PolicyEngine(taint=Taint(False, "AUTHENTICATED")).evaluate(action, make_ctx())
+    assert decision.kind is APPROVE and decision.rule == "authenticated_artifact"
+    public = await PolicyEngine(taint=Taint(False, "PUBLIC")).evaluate(action, make_ctx())
+    assert public.kind is ALLOW
+
+
+async def test_authenticated_mutations_ignore_the_allowlist():
+    action = proposal(
+        "browser.click",
+        browser_context="authenticated",
+        destination="docs.python.org",
+        element_name="Next",
+    )
+    decision = await PolicyEngine(Allowlist("docs.python.org")).evaluate(action, make_ctx())
+    assert decision.kind is APPROVE and decision.rule == "browser_auth_mutation"

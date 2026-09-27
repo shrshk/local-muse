@@ -134,6 +134,7 @@ services:
       SANDBOXD_TOKEN: ${SANDBOXD_TOKEN:?run make env}
     volumes:
       - artifacts:/data/artifacts   # worker-only; never mounted into sandboxes
+      - browser_profile:/data/browser-profile   # logged-in browser profile: a credential
     networks: [default, sandbox-control]
     mem_limit: 2560m
     restart: unless-stopped
@@ -206,3 +207,4 @@ networks:
 volumes:
   postgres_data:
   artifacts:
+  browser_profile:

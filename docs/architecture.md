@@ -101,7 +101,7 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | memory step | `profile_memory`, `conversation_summaries` |
 | 5 | `sandboxes`, `artifacts` (+ worker-only `artifacts` volume) |
 | 6 | `approvals`, `domain_allowlist`, `outbox` (demo external-write target) |
-| 7–8 | `browser_sessions` |
+| 7–8 | `browser_sessions`, `browser_frames`, `browser_input_inbox`, `data_taint` (+ worker-only `browser_profile` volume) |
 | 9 | `goals`, `notification_preferences` |
 | — | `connector_accounts` (schema only, when credential plumbing lands) |
 
@@ -188,3 +188,12 @@ Spec §18: single owner, password login, session cookie. Landed in Phase 2.
   raise `ToolDeferred` → `CallDeferred`, the run pauses, and the workflow waits until the mode is
   `agent`, then tells the model to re-snapshot. Human input (`browser_human_input` Update →
   `browser.human_input` activity) is audited and bypasses policy (the human is the authority).
+
+## Authenticated browsing (Phase 8)
+
+- One persistent Chromium profile per user at `/data/browser-profile/<user_id>` on the
+  worker-only `browser_profile` volume (`launch_persistent_context`). Authenticated sessions are
+  pages in that context; closing the last one closes the context and flushes cookies to disk.
+- The user logs in through takeover: take control, navigate, click, type. Typed text is parked
+  in `browser_input_inbox` by the API and popped (deleted) by the activity; the Temporal Update
+  carries only the row id. The viewer shows a "logged-in profile" badge and a hidden typing box.

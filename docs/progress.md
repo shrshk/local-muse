@@ -13,7 +13,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 5 sandboxd + sandbox | done |
 | 6 Policy rules + approvals | done |
 | 7 Browser | done |
-| 8 Authenticated browser | not started |
+| 8 Authenticated browser | done |
 | 9 Goals | not started |
 | 10 Telegram | not started |
 | 11 PWA / phone | not started |
@@ -355,8 +355,59 @@ Known limitations:
 - DNS rebinding and WebSocket gaps in the network guard (threat-model.md).
 - Authenticated browsing is Phase 8.
 
+## Phase 8 — Authenticated browser
+
+Done 2026-09-27.
+
+What works:
+
+- Persistent per-user Chromium profile on a worker-only volume; `open_session(authenticated)`
+  behind approval; authenticated sessions share the profile, one page each.
+- AUTHENTICATED tagging of snapshots, screenshots and downloads; conversation taint; new policy
+  rule gating sandbox writes, sandbox staging and profile memory; authenticated mutations always
+  need approval.
+- Human-typed text kept out of Temporal history (inbox row, deleted on use). UI badge and hidden
+  typing box for logged-in sessions.
+
+Acceptance evidence (live, `tests/integration/test_auth_browser.py`):
+
+- Through the gateway: opening the profile → approval; after approval the session is
+  authenticated; a sandbox write before reading is allowed; Wikipedia snapshot is tagged
+  AUTHENTICATED; fill and click → approval; sandbox write of snapshot text → approval;
+  `profile.remember` → approval; the authenticated screenshot is an AUTHENTICATED artifact and
+  staging it → approval; `sandbox.list` still allowed; `data_taint` row present; the profile
+  directory holds Chromium's cookie store.
+- From inside a sandbox: `/data/browser-profile` and `/data/artifacts` do not exist, no Chromium
+  cookie store anywhere, no profile mount. Compose boundary test: `browser_profile` and
+  `artifacts` volumes are mounted only in `worker`.
+- Real workflow + model: the model requested the authenticated session, approved via the API;
+  under takeover a random password-like string was typed; it appears nowhere in the workflow's
+  Temporal history or the audit payload, and the inbox is empty afterwards.
+- 6 new policy unit tests (taint rules, authenticated artifact, allowlist ignored when
+  authenticated).
+- Browser (headless Chrome): approval card for the authenticated session, "logged-in profile"
+  badge, password-type typing box under takeover, no console errors.
+
+Finding (fixed): moving the AUTHENTICATED-staging decision into policy had removed the executor's
+own check, so a gateway built without the taint lookup staged logged-in content (caught by the
+Phase 5 test). The gateway now marks executions it runs through an approval (`ctx.approved`),
+and the stage executor refuses AUTHENTICATED content without it: policy and executor are two
+independent layers again.
+
+Regression: full suite 44/45 before the fix (the failure above); after the fix the four affected
+files (sandbox, authenticated browser, approvals, browser) rerun green, 18/18.
+
+Known limitations:
+
+- One profile per user; Chromium locks it, so a second worker process could not share it.
+- Taint is per conversation and never cleared (conservative); a new conversation starts clean.
+
 ## Decisions log
 
+- 2026-09-27: Taint is per conversation, not per argument; the model can launder page text
+  through any argument, so only a scope-level mark is a real boundary.
+- 2026-09-27: Human-typed text bypasses Temporal history via an inbox row, because Update
+  payloads persist forever in history.
 - 2026-09-27: Browser network guard added (not in the spec): internal services are reachable from
   the worker network, so the browser must be kept to public hosts.
 - 2026-09-27: Human takeover reuses the deferred-tool pause (`CallDeferred`), so the wait is the

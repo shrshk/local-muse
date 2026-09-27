@@ -173,3 +173,20 @@ context. Those go into `summary_for_human`, not identity.
 
 Stub external tool for tests and demos: `outbox.send` (EXTERNAL_WRITE / MESSAGE_SEND, destination
 = recipient) writes to `outbox`, idempotent on `action_id`.
+
+## Implementation (Phase 8): authenticated data
+
+- New rule `authenticated_data`, evaluated right after `secret` and before `sandbox`:
+  - `sandbox.stage` of an artifact classified AUTHENTICATED → REQUIRE_APPROVAL
+    (`authenticated_artifact`), even in a clean conversation.
+  - `sandbox.write_file`, `sandbox.exec`, `sandbox.stage`, `profile.remember` in a conversation
+    marked in `data_taint` → REQUIRE_APPROVAL (`authenticated_taint`).
+- A conversation is tainted when an authenticated snapshot, screenshot or download runs in it
+  (coordinator or any of its topics). Taint is coarse on purpose: the model can copy page text
+  into any argument, so argument inspection would not be a boundary. Reading the sandbox stays
+  allowed. External writes already need approval by side effect.
+- Authenticated mutations (click/fill/press/download) always need approval, whatever the
+  allowlist says; opening an authenticated session needs approval.
+- Snapshot output carries `classification`; screenshots and downloads from authenticated
+  sessions are AUTHENTICATED artifacts.
+- `PolicyEngine(allowlist, taint)`: both are trusted lookups (`PolicySources`), never model input.

@@ -83,3 +83,14 @@ def test_published_ports_bind_loopback_only(config: dict[str, Any]):
     for name, svc in config["services"].items():
         for port in svc.get("ports", []):
             assert port.get("host_ip") == "127.0.0.1", (name, port)
+
+
+def test_browser_profile_and_artifacts_live_only_in_the_worker(config: dict[str, Any]):
+    for volume in ("browser_profile", "artifacts"):
+        holders = {
+            name
+            for name, svc in config["services"].items()
+            for v in svc.get("volumes", [])
+            if v.get("type") == "volume" and v.get("source") == volume
+        }
+        assert holders == {"worker"}, (volume, holders)

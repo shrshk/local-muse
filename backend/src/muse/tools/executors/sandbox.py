@@ -119,9 +119,12 @@ async def stage(args: StageArgs, ctx: ExecContext, services: ToolServices) -> Js
     if found is None:
         raise ToolExecutionError("no such artifact in this conversation")
     artifact, data = found
-    if artifact.classification in (DataClassification.AUTHENTICATED, DataClassification.SECRET):
-        # Phase 8 turns AUTHENTICATED into an approval request; until then it is refused.
-        raise ToolExecutionError("authenticated content cannot be copied into a sandbox")
+    if artifact.classification is DataClassification.SECRET:
+        raise ToolExecutionError("secret content never goes into a sandbox")
+    # Policy (rule authenticated_artifact) asks for approval; this is the second layer, so a
+    # misconfigured policy still cannot move logged-in content into a sandbox.
+    if artifact.classification is DataClassification.AUTHENTICATED and not ctx.approved:
+        raise ToolExecutionError("authenticated content enters a sandbox only with approval")
     client, sid = await _ready(ctx, services)
     try:
         path = await client.stage(sid, artifact.name, data)

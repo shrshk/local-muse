@@ -281,3 +281,26 @@ browser_frames = Table(
     Column("jpeg", BYTEA, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+browser_input_inbox = Table(
+    "browser_input_inbox",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column(
+        "session_id",
+        UUID(as_uuid=True),
+        ForeignKey("browser_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("text", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+data_taint = Table(
+    "data_taint",
+    metadata,
+    Column("conversation_id", UUID(as_uuid=True), primary_key=True),
+    Column("classification", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("since", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)

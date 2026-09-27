@@ -1,7 +1,8 @@
 """browser.*: the entire browser surface the model gets. No evaluate, no CDP, no raw Playwright.
 
-One session per topic (or per conversation for the coordinator). Research context only until
-Phase 8. While a human has control, every call is deferred and the workflow waits.
+One session per topic (or per conversation for the coordinator).
+Phase 8 adds authenticated sessions (the user's persistent profile); reading from one marks the
+conversation tainted. While a human has control, every call is deferred and the workflow waits.
 """
 
 import uuid
@@ -10,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from muse.browser.controller import BrowserActionError, BrowserController, Session, SessionOwner
+from muse.modules.browser.taint import PostgresTaintStore
 from muse.tools.errors import ToolDeferred, ToolExecutionError
 from muse.tools.schema import ExecContext, ToolServices
 
@@ -97,8 +99,17 @@ async def navigate(args: NavigateArgs, ctx: ExecContext, services: ToolServices)
         raise ToolExecutionError(str(exc)) from exc
 
 
+async def _taint_if_authenticated(
+    session: Session, ctx: ExecContext, services: ToolServices, source: str
+) -> None:
+    """Reading logged-in content marks the conversation; see policy rule authenticated_data."""
+    if session.context_kind == "authenticated":
+        await PostgresTaintStore(services.engine).mark(ctx.conversation_id, source)
+
+
 async def snapshot(args: NoArgs, ctx: ExecContext, services: ToolServices) -> JsonValue:
     browser, session = await _page(ctx, services)
+    await _taint_if_authenticated(session, ctx, services, "browser.snapshot")
     try:
         return await browser.snapshot(session)
     except BrowserActionError as exc:
@@ -107,6 +118,7 @@ async def snapshot(args: NoArgs, ctx: ExecContext, services: ToolServices) -> Js
 
 async def screenshot(args: NoArgs, ctx: ExecContext, services: ToolServices) -> JsonValue:
     browser, session = await _page(ctx, services)
+    await _taint_if_authenticated(session, ctx, services, "browser.screenshot")
     return await browser.screenshot(session, _owner(ctx))
 
 
@@ -141,6 +153,7 @@ async def scroll(args: ScrollArgs, ctx: ExecContext, services: ToolServices) -> 
 
 async def download(args: ElementArgs, ctx: ExecContext, services: ToolServices) -> JsonValue:
     browser, session = await _page(ctx, services)
+    await _taint_if_authenticated(session, ctx, services, "browser.download")
     try:
         return await browser.download(session, args.element_id, _owner(ctx))
     except BrowserActionError as exc:

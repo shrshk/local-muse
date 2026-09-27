@@ -1,11 +1,13 @@
-"""Owns Playwright in the worker process: one browser, one context+page per session.
+"""Owns Playwright in the worker process.
 
-Sessions are keyed by topic (or conversation for the coordinator) and are not durable: after a
-worker restart the next navigate starts a fresh page. Research contexts are fresh Chromium
-contexts with no cookies or saved state. Every request passes the HostGuard.
+Research sessions get their own fresh Chromium context (no cookies, no saved state).
+Authenticated sessions get a page in the user's persistent profile context, whose directory is
+on a worker-only volume and is a credential. Sessions are keyed by topic (or conversation for the
+coordinator) and are not durable. Every request of every context passes the HostGuard.
 """
 
 import asyncio
+import pathlib
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -61,9 +63,11 @@ class BrowserFacts:
 @dataclass
 class Session:
     id: uuid.UUID
+    user_id: uuid.UUID
     context_kind: ContextKind
     context: BrowserContext
     page: Page
+    owns_context: bool = True
     elements: dict[str, str] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -82,8 +86,11 @@ class BrowserController:
         engine: AsyncEngine,
         artifacts: ArtifactStore,
         publisher: RealtimePublisher | None,
+        profile_root: pathlib.Path | None = None,
     ) -> None:
         self._engine = engine
+        self._profile_root = profile_root
+        self._auth_contexts: dict[uuid.UUID, BrowserContext] = {}
         self._artifacts = artifacts
         self._publisher = publisher
         self._guard = HostGuard()
@@ -103,9 +110,33 @@ class BrowserController:
                 )
         return self._browser
 
+    async def _auth_context(self, user_id: uuid.UUID) -> BrowserContext:
+        """The user's persistent profile. Chromium locks the directory, so one context per user."""
+        if self._profile_root is None:
+            raise BrowserActionError("no browser profile is configured")
+        async with self._start_lock:
+            context = self._auth_contexts.get(user_id)
+            if context is not None:
+                return context
+            self._playwright = self._playwright or await async_playwright().start()
+            directory = self._profile_root / str(user_id)
+            await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
+            context = await self._playwright.chromium.launch_persistent_context(
+                user_data_dir=str(directory),
+                viewport=VIEWPORT,
+                accept_downloads=True,
+                args=["--disable-dev-shm-usage"],
+            )
+            await context.route("**/*", self._guard_route)
+            self._auth_contexts[user_id] = context
+            return context
+
     async def stop(self) -> None:
         for session_id in list(self._sessions):
             await self.close(session_id)
+        for context in list(self._auth_contexts.values()):
+            await context.close()
+        self._auth_contexts.clear()
         if self._browser:
             await self._browser.close()
         if self._playwright:
@@ -119,15 +150,26 @@ class BrowserController:
             return existing
         if existing:
             await self.close(session_id)
-        if kind != "research":
-            raise BrowserActionError("logged-in browsing is not available yet")
-        browser = await self._browser_instance()
-        context = await browser.new_context(viewport=VIEWPORT, accept_downloads=True)
-        await context.route("**/*", self._guard_route)
-        page = await context.new_page()
-        session = Session(id=session_id, context_kind=kind, context=context, page=page)
-        context.on("page", lambda p: self._adopt(session, p))
-        page.on("framenavigated", lambda frame: self._on_navigated(session, frame.parent_frame))
+        if kind == "authenticated":
+            context = await self._auth_context(owner.user_id)
+            blank = [p for p in context.pages if p.url == "about:blank" and not self._in_use(p)]
+            page = blank[0] if blank else await context.new_page()
+            owns_context = False
+        else:
+            browser = await self._browser_instance()
+            context = await browser.new_context(viewport=VIEWPORT, accept_downloads=True)
+            await context.route("**/*", self._guard_route)
+            page = await context.new_page()
+            owns_context = True
+        session = Session(
+            id=session_id,
+            user_id=owner.user_id,
+            context_kind=kind,
+            context=context,
+            page=page,
+            owns_context=owns_context,
+        )
+        self._watch(session, page)
         self._sessions[session_id] = session
         async with self._engine.begin() as conn:
             await BrowserSessionsController(conn).upsert(
@@ -140,20 +182,39 @@ class BrowserController:
             )
         return session
 
+    def _watch(self, session: Session, page: Page) -> None:
+        page.on("popup", lambda popup: self._adopt(session, popup))
+        page.on("framenavigated", lambda frame: self._on_navigated(session, frame.parent_frame))
+
+    def _in_use(self, page: Page) -> bool:
+        return any(s.page is page for s in self._sessions.values())
+
     async def close(self, session_id: uuid.UUID) -> None:
         session = self._sessions.pop(session_id, None)
         if session:
             try:
-                await session.context.close()
+                if session.owns_context:
+                    await session.context.close()
+                else:
+                    await session.page.close()
+                    await self._close_profile_if_unused(session)
             except PlaywrightError:
                 logger.warning("browser_context_close_failed", session_id=str(session_id))
         async with self._engine.begin() as conn:
             await BrowserSessionsController(conn).set(session_id, status="closed")
 
+    async def _close_profile_if_unused(self, session: Session) -> None:
+        # Closing the persistent context flushes cookies and storage to the profile directory.
+        still_used = any(s.context is session.context for s in self._sessions.values())
+        if not still_used and self._auth_contexts.get(session.user_id) is session.context:
+            del self._auth_contexts[session.user_id]
+            await session.context.close()
+
     def _adopt(self, session: Session, page: Page) -> None:
         # A click that opens a new tab moves the session to it.
         session.page = page
         session.elements.clear()
+        self._watch(session, page)
 
     def _on_navigated(self, session: Session, parent: object) -> None:
         if parent is None:  # main frame only
@@ -214,6 +275,7 @@ class BrowserController:
                 "url": session.page.url,
                 "title": await session.page.title(),
                 "context": session.context_kind,
+                "classification": self._classification(session).value,
                 "elements": data["elements"],
                 "text": data["text"],
             }

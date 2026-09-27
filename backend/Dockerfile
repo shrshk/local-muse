@@ -30,5 +30,6 @@ CMD ["uvicorn", "muse.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS worker
 USER root
-RUN playwright install --with-deps chromium && chmod -R a+rX /opt/playwright
+RUN playwright install --with-deps chromium && chmod -R a+rX /opt/playwright \
+    && mkdir -p /data/browser-profile && chown muse:muse /data/browser-profile
 USER muse

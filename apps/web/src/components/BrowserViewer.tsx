@@ -100,6 +100,7 @@ export function BrowserViewer({ session, onChange }: { session: BrowserSession; 
         <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
           {open ? '▾' : '▸'} Browser
         </button>
+        {session.context === 'authenticated' && <span className="browser__badge">logged-in profile</span>}
         <span className="browser__url" title={url}>
           {url || 'about:blank'}
         </span>
@@ -126,7 +127,13 @@ export function BrowserViewer({ session, onChange }: { session: BrowserSession; 
                 <button type="submit">Go</button>
               </form>
               <form onSubmit={typeText}>
-                <input placeholder="Type into the page" value={text} onChange={(e) => setText(e.target.value)} />
+                <input
+                  type={session.context === 'authenticated' ? 'password' : 'text'}
+                  autoComplete="off"
+                  placeholder={session.context === 'authenticated' ? 'Type (hidden, e.g. a password)' : 'Type into the page'}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                />
                 <button type="submit">Type</button>
                 <button type="button" onClick={() => void act({ kind: 'press', key: 'Enter' })}>
                   Enter

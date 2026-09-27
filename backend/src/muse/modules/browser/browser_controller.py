@@ -1,5 +1,6 @@
 """Queries for browser sessions, frames and the domain allowlist."""
 
+import datetime as dt
 import uuid
 from typing import Any
 
@@ -8,7 +9,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from muse.modules.browser.browser_schema import AllowlistEntry, BrowserSessionView
-from muse.shared.tables import browser_frames, browser_sessions, domain_allowlist
+from muse.shared.tables import (
+    browser_frames,
+    browser_input_inbox,
+    browser_sessions,
+    domain_allowlist,
+)
 
 
 class BrowserSessionsController:
@@ -108,3 +114,39 @@ class AllowlistController:
             domain_allowlist.c.context == context,
         )
         return bool((await self._conn.execute(stmt)).rowcount)
+
+
+INBOX_TTL = dt.timedelta(minutes=5)
+
+
+class InputInboxController:
+    """Typed text travels here, not in Temporal history (Update payloads are kept forever)."""
+
+    def __init__(self, conn: AsyncConnection) -> None:
+        self._conn = conn
+
+    async def put(self, session_id: uuid.UUID, text: str) -> uuid.UUID:
+        await self._conn.execute(
+            delete(browser_input_inbox).where(
+                browser_input_inbox.c.created_at < func.now() - INBOX_TTL
+            )
+        )
+        stmt = (
+            insert(browser_input_inbox)
+            .values(session_id=session_id, text=text)
+            .returning(browser_input_inbox.c.id)
+        )
+        inbox_id: uuid.UUID = (await self._conn.execute(stmt)).scalar_one()
+        return inbox_id
+
+    async def pop(self, inbox_id: uuid.UUID, session_id: uuid.UUID) -> str | None:
+        stmt = (
+            delete(browser_input_inbox)
+            .where(
+                browser_input_inbox.c.id == inbox_id,
+                browser_input_inbox.c.session_id == session_id,
+            )
+            .returning(browser_input_inbox.c.text)
+        )
+        text: str | None = (await self._conn.execute(stmt)).scalar_one_or_none()
+        return text

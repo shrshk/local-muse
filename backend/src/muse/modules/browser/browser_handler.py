@@ -9,7 +9,11 @@ from temporalio.service import RPCError
 
 from muse.activities.browser import BrowserHumanInputInput, BrowserModeInput
 from muse.modules.auth.auth_schema import Principal
-from muse.modules.browser.browser_controller import AllowlistController, BrowserSessionsController
+from muse.modules.browser.browser_controller import (
+    AllowlistController,
+    BrowserSessionsController,
+    InputInboxController,
+)
 from muse.modules.browser.browser_schema import (
     AllowlistEntry,
     BrowserMode,
@@ -77,14 +81,16 @@ class BrowserHandler:
         self, session_id: uuid.UUID, user: Principal, action: HumanInput
     ) -> dict[str, Any]:
         row = await self.require_owner(session_id, user.id)
+        payload = action.model_dump(exclude_none=True)
+        if action.kind == "type" and action.text:
+            # Typed text may be a password: park it in the inbox, send only its id.
+            async with self._engine.begin() as conn:
+                inbox_id = await InputInboxController(conn).put(session_id, action.text)
+            payload = {"kind": "type", "inbox_id": str(inbox_id)}
         result: dict[str, Any] = await self._update(
             row["workflow_id"],
             "browser_human_input",
-            BrowserHumanInputInput(
-                session_id=session_id,
-                action=action.model_dump(exclude_none=True),
-                by=user.username,
-            ),
+            BrowserHumanInputInput(session_id=session_id, action=payload, by=user.username),
             dict,
         )
         return result

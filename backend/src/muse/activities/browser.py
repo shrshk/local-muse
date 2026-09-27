@@ -14,7 +14,10 @@ from temporalio.exceptions import ApplicationError
 
 from muse.browser.controller import BrowserActionError, BrowserController, browser_channel
 from muse.modules.audit.audit_controller import AuditController
-from muse.modules.browser.browser_controller import BrowserSessionsController
+from muse.modules.browser.browser_controller import (
+    BrowserSessionsController,
+    InputInboxController,
+)
 from muse.realtime.publisher import RealtimePublisher, conversation_channel
 from muse.tools.schema import ExecContext
 
@@ -73,8 +76,17 @@ class BrowserActivities:
                 _ctx(row, request.by),
                 {"session_id": str(request.session_id), "kind": request.action.get("kind")},
             )
+        action = dict(request.action)
+        if "inbox_id" in action:
+            async with self._engine.begin() as conn:
+                text = await InputInboxController(conn).pop(
+                    uuid.UUID(str(action.pop("inbox_id"))), request.session_id
+                )
+            if text is None:
+                raise ApplicationError("typed text expired; type it again", non_retryable=True)
+            action["text"] = text
         try:
-            return await self._controller.human_input(request.session_id, request.action)
+            return await self._controller.human_input(request.session_id, action)
         except BrowserActionError as exc:
             raise ApplicationError(str(exc), non_retryable=True) from exc
 

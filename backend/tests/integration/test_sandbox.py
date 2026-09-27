@@ -259,7 +259,7 @@ async def test_tools_go_through_the_gateway_and_stage_only_safe_artifacts():
         r = json.loads(stdout.strip().splitlines()[-1])
 
     assert r["stage"]["ok"] and r["stage"]["output"]["staged"] == "incoming/data.csv"
-    assert not r["stage_auth"]["ok"] and "authenticated" in r["stage_auth"]["error"]
+    assert not r["stage_auth"]["ok"] and "only with approval" in r["stage_auth"]["error"]
     assert r["exec"]["ok"] and r["exec"]["output"]["stdout"].strip() == "2"
     assert not r["pip"]["ok"] and "no network" in r["pip"]["error"]
     statuses = sql(

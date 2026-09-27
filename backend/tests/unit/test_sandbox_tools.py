@@ -1,5 +1,6 @@
 import datetime as dt
 import uuid
+from dataclasses import replace
 
 import pytest
 
@@ -47,13 +48,21 @@ class FakeArtifacts:
         return view, b"data"
 
 
-@pytest.mark.parametrize(
-    "classification", [DataClassification.AUTHENTICATED, DataClassification.SECRET]
-)
-async def test_authenticated_artifacts_never_reach_a_sandbox(classification: DataClassification):
-    services = ToolServices(engine=None, artifacts=FakeArtifacts(classification))  # type: ignore[arg-type]
-    with pytest.raises(ToolExecutionError, match="authenticated"):
+async def test_secret_artifacts_never_reach_a_sandbox():
+    services = ToolServices(engine=None, artifacts=FakeArtifacts(DataClassification.SECRET))  # type: ignore[arg-type]
+    with pytest.raises(ToolExecutionError, match="secret"):
         await sandbox.stage(sandbox.StageArgs(artifact_id=uuid.uuid4()), make_ctx(), services)
+
+
+async def test_authenticated_artifacts_need_an_approved_execution():
+    services = ToolServices(engine=None, artifacts=FakeArtifacts(DataClassification.AUTHENTICATED))  # type: ignore[arg-type]
+    args = sandbox.StageArgs(artifact_id=uuid.uuid4())
+    with pytest.raises(ToolExecutionError, match="only with approval"):
+        await sandbox.stage(args, make_ctx(), services)
+    # Approved: passes the classification check and reaches the (absent) sandbox.
+    approved = replace(make_ctx(), approved=True)
+    with pytest.raises(ToolExecutionError, match="no sandbox available"):
+        await sandbox.stage(args, approved, services)
 
 
 def test_sandbox_tools_are_registered_with_bounded_exec_time():

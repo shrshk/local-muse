@@ -45,6 +45,8 @@ class ExecContext:
     approval_ttl_s: int = 7 * 24 * 3600
     # Set by the gateway for the executing action; executors use it as an idempotency key.
     action_id: uuid.UUID | None = None
+    # Set by the gateway only when this execution was authorized by a human approval.
+    approved: bool = False
 
 
 class ToolResult(BaseModel):

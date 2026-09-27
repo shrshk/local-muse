@@ -51,6 +51,28 @@ class EmptyAllowlist:
         return False
 
 
+class TaintStore(Protocol):
+    async def is_tainted(self, conversation_id: uuid.UUID) -> bool: ...
+
+    async def artifact_classification(self, artifact_id: uuid.UUID) -> str | None: ...
+
+
+class NoTaint:
+    async def is_tainted(self, conversation_id: uuid.UUID) -> bool:
+        return False
+
+    async def artifact_classification(self, artifact_id: uuid.UUID) -> str | None:
+        return None
+
+
+@dataclass(frozen=True)
+class PolicySources:
+    """Trusted lookups rules may consult. Never model input."""
+
+    allowlist: DomainAllowlist
+    taint: TaintStore
+
+
 # Documented as incomplete: a pattern list, not an understanding of intent.
 ESCALATION = re.compile(r"buy|purchase|order|confirm|send|submit|pay|delete|remove|transfer", re.I)
 BROWSER_READS = {"browser.navigate", "browser.snapshot", "browser.screenshot", "browser.scroll"}
@@ -68,7 +90,10 @@ APPROVAL_RISKS = {
     RiskClass.DESTRUCTIVE,
 }
 
-RuleFn = Callable[[ActionProposal, ExecContext, DomainAllowlist], Awaitable[Decision | None]]
+# Writes that could carry logged-in content somewhere it would persist.
+TAINT_SENSITIVE = {"sandbox.write_file", "sandbox.exec", "sandbox.stage", "profile.remember"}
+
+RuleFn = Callable[[ActionProposal, ExecContext, PolicySources], Awaitable[Decision | None]]
 
 
 @dataclass(frozen=True)
@@ -81,17 +106,37 @@ def _escalates(action: ActionProposal) -> bool:
     return bool(action.element_name and ESCALATION.search(action.element_name))
 
 
-async def _secret(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> Decision | None:
+async def _secret(a: ActionProposal, c: ExecContext, src: PolicySources) -> Decision | None:
     if a.data_classification is DataClassification.SECRET:
         return Decision.deny("secret data never leaves", "secret")
     return None
 
 
-async def _sandbox(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> Decision | None:
+async def _authenticated_data(
+    a: ActionProposal, c: ExecContext, src: PolicySources
+) -> Decision | None:
+    """Spec §9.1: logged-in content goes to a sandbox or to memory only with approval."""
+    if a.tool not in TAINT_SENSITIVE:
+        return None
+    artifact_id = a.args.get("artifact_id")
+    if a.tool == "sandbox.stage" and isinstance(artifact_id, str):
+        classification = await src.taint.artifact_classification(uuid.UUID(artifact_id))
+        if classification == DataClassification.AUTHENTICATED.value:
+            return Decision.require_approval(
+                "copying logged-in content into the sandbox", "authenticated_artifact"
+            )
+    if await src.taint.is_tainted(a.conversation_id):
+        return Decision.require_approval(
+            "this conversation has read logged-in content", "authenticated_taint"
+        )
+    return None
+
+
+async def _sandbox(a: ActionProposal, c: ExecContext, src: PolicySources) -> Decision | None:
     return Decision.allow("sandbox") if a.tool.startswith("sandbox.") else None
 
 
-async def _browser(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> Decision | None:
+async def _browser(a: ActionProposal, c: ExecContext, src: PolicySources) -> Decision | None:
     if not a.tool.startswith("browser."):
         return None
     if a.tool == "browser.open_session" and a.browser_context == "authenticated":
@@ -105,7 +150,7 @@ async def _browser(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> De
             return Decision.require_approval(
                 f"element looks consequential: {a.element_name!r}", "browser_escalation"
             )
-        if a.destination and await al.allows(a.user_id, a.destination, "research"):
+        if a.destination and await src.allowlist.allows(a.user_id, a.destination, "research"):
             return Decision.allow("browser_allowlisted")
         return Decision.require_approval(
             f"interacting with {a.destination or 'an unknown site'}", "browser_not_allowlisted"
@@ -113,7 +158,7 @@ async def _browser(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> De
     return None
 
 
-async def _named_allows(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> Decision | None:
+async def _named_allows(a: ActionProposal, c: ExecContext, src: PolicySources) -> Decision | None:
     if a.tool in {"http.get", "web.search", "notify.user"}:
         return Decision.allow("public_read_or_owner_notify")
     if a.tool in LOCAL_ASSISTANT_TOOLS:
@@ -122,7 +167,7 @@ async def _named_allows(a: ActionProposal, c: ExecContext, al: DomainAllowlist) 
 
 
 async def _approval_classes(
-    a: ActionProposal, c: ExecContext, al: DomainAllowlist
+    a: ActionProposal, c: ExecContext, src: PolicySources
 ) -> Decision | None:
     if a.side_effect in APPROVAL_SIDE_EFFECTS:
         return Decision.require_approval(f"side effect {a.side_effect.value}", "side_effect")
@@ -131,7 +176,7 @@ async def _approval_classes(
     return None
 
 
-async def _read_only(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> Decision | None:
+async def _read_only(a: ActionProposal, c: ExecContext, src: PolicySources) -> Decision | None:
     if a.risk is RiskClass.READ_ONLY and a.side_effect in {
         SideEffectClass.NONE,
         SideEffectClass.NETWORK_READ,
@@ -142,6 +187,7 @@ async def _read_only(a: ActionProposal, c: ExecContext, al: DomainAllowlist) -> 
 
 RULES: tuple[Rule, ...] = (
     Rule("secret", _secret),
+    Rule("authenticated_data", _authenticated_data),
     Rule("sandbox", _sandbox),
     Rule("browser", _browser),
     Rule("named_allows", _named_allows),
@@ -151,12 +197,16 @@ RULES: tuple[Rule, ...] = (
 
 
 class PolicyEngine:
-    def __init__(self, allowlist: DomainAllowlist | None = None) -> None:
-        self._allowlist: DomainAllowlist = allowlist or EmptyAllowlist()
+    def __init__(
+        self, allowlist: DomainAllowlist | None = None, taint: TaintStore | None = None
+    ) -> None:
+        self._sources = PolicySources(
+            allowlist=allowlist or EmptyAllowlist(), taint=taint or NoTaint()
+        )
 
     async def evaluate(self, action: ActionProposal, ctx: ExecContext) -> Decision:
         for rule in RULES:
-            decision = await rule.check(action, ctx, self._allowlist)
+            decision = await rule.check(action, ctx, self._sources)
             if decision is not None:
                 return decision
         return Decision.require_approval("no rule allows this action", "default")
