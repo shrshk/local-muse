@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useConversation } from '../hooks/useConversation';
 import type { Action, Conversation, Message } from '../types';
 import { ToolCallChip } from './ToolCallChip';
+import { TopicsPanel } from './TopicsPanel';
 
 type TimelineItem = { kind: 'message'; at: string; message: Message } | { kind: 'action'; at: string; action: Action };
 
@@ -93,6 +94,7 @@ export function ChatPage() {
         </ul>
       </aside>
       <section className="chat__main">
+        {state && <TopicsPanel topics={state.topics} onChange={() => void reload()} />}
         <div className="chat__log">
           {items.length === 0 && !busy && <p className="muted">Ask anything. Try: “What time is it in Tokyo?”</p>}
           {items.map((item) =>

@@ -56,6 +56,13 @@ path: registry → policy → executor → audit.
 - Boundary tests (`tests/boundary/test_tool_boundary.py`) enforce the import and attribute
   rules by AST, and that `ToolIntent` rejects classification fields.
 
+### Tools registered so far
+
+| Tool | Classification | Phase 6 note |
+|---|---|---|
+| `clock.now` | READ_ONLY / NONE / PUBLIC, idempotent | ALLOW |
+| `topic.start` | LOCAL_MUTATION / NONE / PERSONAL | needs an explicit ALLOW rule, or the default sends it to REQUIRE_APPROVAL |
+
 ## Enums
 
 ```text

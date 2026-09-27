@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from muse.tools.errors import ToolExecutionError
-from muse.tools.schema import ExecContext
+from muse.tools.schema import ExecContext, ToolServices
 
 
 class ClockNowArgs(BaseModel):
@@ -15,7 +15,7 @@ class ClockNowArgs(BaseModel):
     timezone: str = Field(default="UTC", description="IANA timezone, e.g. Asia/Tokyo")
 
 
-async def now(args: ClockNowArgs, ctx: ExecContext) -> JsonValue:
+async def now(args: ClockNowArgs, ctx: ExecContext, services: ToolServices) -> JsonValue:
     try:
         zone = ZoneInfo(args.timezone)
     except (ZoneInfoNotFoundError, ValueError) as exc:

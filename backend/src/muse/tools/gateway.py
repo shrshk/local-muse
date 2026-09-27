@@ -10,7 +10,7 @@ from muse.shared.logger import get_logger
 from muse.tools.errors import ToolExecutionError
 from muse.tools.recorder import ActionRecorder
 from muse.tools.registry import ToolRegistry
-from muse.tools.schema import ExecContext, Executor, ToolIntent, ToolResult
+from muse.tools.schema import ExecContext, Executor, ToolIntent, ToolResult, ToolServices
 
 logger = get_logger(__name__)
 
@@ -25,11 +25,13 @@ class ToolGateway:
         registry: ToolRegistry,
         policy: PolicyEngine,
         recorder: ActionRecorder,
+        services: ToolServices,
         ctx: ExecContext,
     ) -> None:
         self._registry = registry
         self._policy = policy
         self._recorder = recorder
+        self._services = services
         self._ctx = ctx
 
     async def invoke(self, intent: ToolIntent) -> ToolResult:
@@ -70,7 +72,7 @@ class ToolGateway:
 
     async def _execute(self, executor: Executor, args: BaseModel) -> ToolResult:
         try:
-            output = await executor(args, self._ctx)
+            output = await executor(args, self._ctx, self._services)
         except ToolExecutionError as exc:
             return ToolResult(ok=False, error=str(exc))
         return ToolResult(ok=True, output=output)

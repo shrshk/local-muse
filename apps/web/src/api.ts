@@ -5,6 +5,9 @@ import type {
   HealthReport,
   Principal,
   SendAck,
+  Topic,
+  TopicMemory,
+  TopicMemoryDocument,
 } from './types';
 
 export class UnauthorizedError extends Error {}
@@ -40,6 +43,13 @@ export const api = {
   createConversation: () => post<Conversation>('/api/conversations', {}),
   state: (id: string) => request<ConversationState>(`/api/conversations/${id}/state`),
   send: (id: string, content: string) => post<SendAck>(`/api/conversations/${id}/messages`, { content }),
+  cancelTopic: (id: string) => post<Topic>(`/api/topics/${id}/cancel`),
+  topicMemory: (id: string) => request<TopicMemory>(`/api/topics/${id}/memory`),
+  updateTopicMemory: (id: string, document: TopicMemoryDocument, version: number) =>
+    request<TopicMemory>(`/api/topics/${id}/memory`, {
+      method: 'PUT',
+      body: JSON.stringify({ document, version }),
+    }),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
 };

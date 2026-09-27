@@ -94,8 +94,9 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 |---|---|
 | 1 | `service_heartbeats` (worker liveness + sandboxd reachability; see below) |
 | 2 | `users`, `conversations`, `messages`, `actions`, `audit_events` |
-| 3 | `realtime_channel_seqs` (`conversation_summaries` moves to Phase 4 with memory) |
-| 4 | `topics`, `topic_memory`, `profile_memory` |
+| 3 | `realtime_channel_seqs` |
+| 4 | `topics`, `topic_memory` |
+| memory step | `profile_memory`, `conversation_summaries` (deferred from Phase 4; see progress) |
 | 5 | `sandboxes`, `artifacts` |
 | 6 | `approvals`, `domain_allowlist` |
 | 7–8 | `browser_sessions` |

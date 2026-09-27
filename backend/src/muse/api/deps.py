@@ -8,6 +8,7 @@ from muse.modules.auth.auth_schema import Principal
 from muse.modules.conversations.conversations_handler import ConversationsHandler
 from muse.modules.health.health_handler import HealthHandler
 from muse.modules.realtime.realtime_handler import RealtimeHandler
+from muse.modules.topics.topics_handler import TopicsHandler
 
 
 def health_handler(request: Request) -> HealthHandler:
@@ -27,6 +28,11 @@ def auth_handler(request: Request) -> AuthHandler:
 
 def conversations_handler(request: Request) -> ConversationsHandler:
     handler: ConversationsHandler = request.app.state.conversations_handler
+    return handler
+
+
+def topics_handler(request: Request) -> TopicsHandler:
+    handler: TopicsHandler = request.app.state.topics_handler
     return handler
 
 

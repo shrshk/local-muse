@@ -23,6 +23,10 @@ def conversation_channel(conversation_id: object) -> str:
     return f"conversation:{conversation_id}"
 
 
+def topic_channel(topic_id: object) -> str:
+    return f"topic:{topic_id}"
+
+
 class RealtimePublisher:
     def __init__(self, engine: AsyncEngine, http: httpx.AsyncClient, settings: Settings) -> None:
         self._engine = engine

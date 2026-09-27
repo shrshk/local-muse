@@ -10,9 +10,12 @@ TURNS_PER_RUN = 50
 
 
 class PendingTurn(BaseModel):
+    """A queued unit of coordinator work: a user message, or a topic result to relay."""
+
     turn_id: uuid.UUID
     message_id: uuid.UUID
     seq: int
+    kind: Literal["user", "topic_result"] = "user"
 
 
 class ConversationState(BaseModel):
@@ -38,13 +41,14 @@ class SendMessageAck(BaseModel):
 class ConversationStatus(BaseModel):
     running_turn_id: uuid.UUID | None = None
     pending_turn_ids: list[uuid.UUID] = Field(default_factory=list)
+    active_topic_ids: list[uuid.UUID] = Field(default_factory=list)
     last_error: str | None = None
 
 
 class PersistMessageInput(BaseModel):
     message_id: uuid.UUID
     conversation_id: uuid.UUID
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "event"]
     content: str
 
 
@@ -60,7 +64,7 @@ class LoadTurnInput(BaseModel):
 
 
 class HistoryItem(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "event"]
     content: str
 
 
@@ -73,3 +77,37 @@ class PublishEventInput(BaseModel):
     channel: str
     event_type: str
     data: dict[str, Any]
+
+
+class ClaimTopicsInput(BaseModel):
+    conversation_id: uuid.UUID
+
+
+class TopicStart(BaseModel):
+    topic_id: uuid.UUID
+    title: str
+    objective: str
+
+
+class TopicInput(BaseModel):
+    topic_id: uuid.UUID
+    conversation_id: uuid.UUID
+    user_id: uuid.UUID
+    title: str
+    objective: str
+    step_limit: int
+
+
+class TopicResult(BaseModel):
+    topic_id: uuid.UUID
+    title: str
+    status: Literal["completed", "failed", "cancelled"]
+    summary: str | None = None
+    error: str | None = None
+
+
+class FinishTopicInput(BaseModel):
+    topic_id: uuid.UUID
+    status: Literal["completed", "failed", "cancelled"]
+    report: dict[str, Any] | None = None
+    error: str | None = None

@@ -23,6 +23,7 @@ from muse.modules.conversations.conversations_schema import (
     MessageView,
 )
 from muse.modules.realtime.realtime_controller import RealtimeSeqController
+from muse.modules.topics.topics_controller import TopicsController
 from muse.realtime.publisher import conversation_channel
 from muse.shared.logger import get_logger
 from muse.shared.settings import Settings
@@ -96,11 +97,13 @@ class ConversationsHandler:
             seq = await RealtimeSeqController(conn).current(conversation_channel(conversation_id))
             messages = await MessagesController(conn).list_for_conversation(conversation_id)
             actions = await ActionsController(conn).list_for_conversation(conversation_id, user_id)
+            topics = await TopicsController(conn).list_for_conversation(conversation_id, user_id)
         return ConversationStateView(
             conversation=conversation,
             seq=seq,
             messages=messages,
             actions=actions,
+            topics=topics,
             status=await self._status(conversation_id),
         )
 

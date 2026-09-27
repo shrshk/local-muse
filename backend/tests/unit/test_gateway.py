@@ -4,7 +4,7 @@ from muse.policy.engine import Decision, DecisionKind, PolicyEngine
 from muse.tools.gateway import InvalidToolArgs, ToolGateway
 from muse.tools.schema import ActionProposal, ExecContext, ToolIntent
 from muse.tools.specs import build_registry
-from tests.fakes import FakeRecorder, make_ctx
+from tests.fakes import NO_SERVICES, FakeRecorder, make_ctx
 
 
 class FixedPolicy(PolicyEngine):
@@ -17,7 +17,8 @@ class FixedPolicy(PolicyEngine):
 
 def gateway(policy: PolicyEngine | None = None) -> tuple[ToolGateway, FakeRecorder]:
     recorder = FakeRecorder()
-    return ToolGateway(build_registry(), policy or PolicyEngine(), recorder, make_ctx()), recorder
+    gw = ToolGateway(build_registry(), policy or PolicyEngine(), recorder, NO_SERVICES, make_ctx())
+    return gw, recorder
 
 
 async def test_allowed_tool_executes_and_is_recorded():

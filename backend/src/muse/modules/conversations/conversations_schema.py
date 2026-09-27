@@ -7,9 +7,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from muse.modules.actions.actions_schema import ActionView
+from muse.modules.topics.topics_schema import TopicView
 from muse.workflows.schema import ConversationStatus
 
-Role = Literal["user", "assistant"]
+Role = Literal["user", "assistant", "event"]
 
 
 class ConversationView(BaseModel):
@@ -42,4 +43,5 @@ class ConversationStateView(BaseModel):
     seq: int
     messages: list[MessageView]
     actions: list[ActionView]
+    topics: list[TopicView]
     status: ConversationStatus

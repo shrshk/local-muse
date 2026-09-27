@@ -24,8 +24,11 @@ TOOLSET_ID = "gateway"
 TOOL_TIMEOUT = timedelta(seconds=60)
 
 
-def build_toolset(registry: ToolRegistry) -> FunctionToolset[AgentDeps]:
-    return FunctionToolset([_gateway_tool(s) for s in registry.specs()], id=TOOLSET_ID)
+def build_toolset(
+    registry: ToolRegistry, exclude: frozenset[str] = frozenset()
+) -> FunctionToolset[AgentDeps]:
+    tools = [_gateway_tool(s) for s in registry.specs() if s.name not in exclude]
+    return FunctionToolset(tools, id=TOOLSET_ID)
 
 
 def _gateway_tool(spec: ToolSpec) -> Tool[AgentDeps]:

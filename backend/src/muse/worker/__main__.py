@@ -15,7 +15,8 @@ from pydantic_ai.durable_exec.temporal import TemporalDurability
 from temporalio.worker import Worker
 
 from muse.activities.conversation import ConversationActivities
-from muse.agents.instances import COORDINATOR
+from muse.activities.topics import TopicActivities
+from muse.agents.instances import AGENTS
 from muse.agents.runtime import AgentRuntime, configure_agent_runtime
 from muse.modules.health.probes import Probe, ProcessProbe, SandboxdProbe
 from muse.policy.engine import PolicyEngine
@@ -26,10 +27,12 @@ from muse.shared.logger import configure_logging, get_logger
 from muse.shared.settings import Settings, get_settings
 from muse.shared.temporal import connect_temporal
 from muse.tools.recorder import PostgresActionRecorder
+from muse.tools.schema import ToolServices
 from muse.tools.specs import build_registry
 from muse.worker.heartbeat import HeartbeatReporter
 from muse.worker.interceptors import HeartbeatInterceptor
 from muse.workflows.conversation import ConversationWorkflow
+from muse.workflows.topic import TopicWorkflow
 
 logger = get_logger(__name__)
 
@@ -37,13 +40,16 @@ MODEL_ACTIVITY_MARKER = "__model_"
 
 
 def model_activities() -> list[Callable[..., Any]]:
-    durability = TemporalDurability.from_agent(COORDINATOR)
-    assert durability is not None
-    return [
-        a
-        for a in durability.temporal_activities
-        if MODEL_ACTIVITY_MARKER in getattr(a, "__temporal_activity_definition").name
-    ]
+    activities: list[Callable[..., Any]] = []
+    for agent in AGENTS:
+        durability = TemporalDurability.from_agent(agent)
+        assert durability is not None
+        activities += [
+            a
+            for a in durability.temporal_activities
+            if MODEL_ACTIVITY_MARKER in getattr(a, "__temporal_activity_definition").name
+        ]
+    return activities
 
 
 class WorkerProcess:
@@ -63,10 +69,13 @@ class WorkerProcess:
                 registry=build_registry(),
                 policy=PolicyEngine(),
                 recorder=PostgresActionRecorder(engine),
+                services=ToolServices(engine=engine),
                 publisher=publisher,
             )
         )
-        worker = self._build_worker(client, ConversationActivities(engine, publisher))
+        worker = self._build_worker(
+            client, ConversationActivities(engine, publisher), TopicActivities(engine)
+        )
         reporter = HeartbeatReporter(
             engine, self._probes(http), settings.heartbeat_interval_seconds
         )
@@ -92,7 +101,9 @@ class WorkerProcess:
         if worker_task.done() and (exc := worker_task.exception()) is not None:
             raise exc
 
-    def _build_worker(self, client: Any, activities: ConversationActivities) -> Worker:
+    def _build_worker(
+        self, client: Any, conversations: ConversationActivities, topics: TopicActivities
+    ) -> Worker:
         if self._role == "model":
             # One local model: the queue serializes inference, no scheduler needed.
             return Worker(
@@ -106,11 +117,13 @@ class WorkerProcess:
         return Worker(
             client,
             task_queue=self._settings.task_queue_main,
-            workflows=[ConversationWorkflow],
+            workflows=[ConversationWorkflow, TopicWorkflow],
             activities=[
-                activities.persist_message,
-                activities.load_turn,
-                activities.publish_event,
+                conversations.persist_message,
+                conversations.load_turn,
+                conversations.publish_event,
+                topics.claim_pending,
+                topics.finish,
             ],
             interceptors=[HeartbeatInterceptor()],
         )

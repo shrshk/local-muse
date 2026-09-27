@@ -152,3 +152,26 @@ workflow durability.
 - **Payloads** use PydanticAI's payload converter (`PydanticAIPlugin`) on every client and worker.
 - **Sandbox.** Workflow imports go through `imports_passed_through()`; the agent is built at import
   (`agents/instances.py`) because workflows reference it at class definition.
+
+## Implementation (Phase 4): topics
+
+- **Starting.** The coordinator calls the `topic.start` tool (through the gateway like any tool).
+  The executor checks depth (no `topic_id` in context), trigger (`user` only, so relaying a topic
+  result can never re-start work) and the limit (3 active per conversation, counted under the
+  conversation row lock), then writes a `pending` topic and its memory. It starts nothing.
+- **Children.** After a coordinator turn, the conversation workflow calls `topic.claim_pending`
+  (pending → running, idempotent) and starts `TopicWorkflow` children, id `topic-<id>`,
+  `parent_close_policy=REQUEST_CANCEL` so cleanup always runs.
+- **TopicWorkflow** runs the `topic_worker` agent (output `TopicReport`, request limit 60, gateway
+  toolset without `topic.start`), then `topic.finish` records status, result and merges the report
+  into topic memory (optimistic, retried against concurrent user edits). Tokens stream to
+  `topic:<id>`; lifecycle events (`topic.started|completed|failed|cancelled`) go to the
+  conversation channel.
+- **Cancellation.** `POST /api/topics/{id}/cancel`: pending topics are marked cancelled in place;
+  running ones get Temporal cancellation. The workflow catches `CancelledError`, records
+  `cancelled` (memory notes it), publishes, and re-raises, so Temporal shows CANCELED.
+- **Results.** A watcher task per child awaits its handle, persists an `event` message
+  ("Topic X completed/failed/was cancelled"), publishes `event.message`, and for completions queues
+  a `topic_result` turn. That turn's prompt is the event (`[event] …`), so the coordinator relays it.
+- **Guards.** The conversation workflow does not idle-complete or Continue-As-New while topics are
+  active (children belong to the run).

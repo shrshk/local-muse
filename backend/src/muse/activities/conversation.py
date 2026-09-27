@@ -49,7 +49,7 @@ class ConversationActivities:
                 request.conversation_id, request.history_limit, before_seq=current.seq
             )
         return TurnContext(
-            prompt=current.content,
+            prompt=f"[event] {current.content}" if current.role == "event" else current.content,
             history=[HistoryItem(role=m.role, content=m.content) for m in history],
         )
 

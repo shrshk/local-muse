@@ -8,7 +8,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 1 Platform skeleton | done |
 | 2 Local model + policy skeleton + chat | done |
 | 3 Durable conversation | done |
-| 4 Topics | not started |
+| 4 Topics | done |
 | 5 sandboxd + sandbox | not started |
 | 6 Policy rules + approvals | not started |
 | 7 Browser | not started |
@@ -142,8 +142,54 @@ same timeline; reload mid-turn rejoins and ends on the stored reply; no console 
 - A failed turn is reported (`agent.failed`, `status.last_error`) but not stored as a message.
 - Retried idempotent tool calls record a second proposal with a new `action_id`.
 
+## Phase 4 — Topics
+
+Done 2026-09-27.
+
+What works:
+
+- `topic.start` tool (via the gateway) records a pending topic; the conversation workflow starts a
+  `TopicWorkflow` child after the turn. Max 3 active topics per conversation; depth 1; only a user
+  message can start topics.
+- `topic_worker` agent with structured `TopicReport`, 60-request limit, no topic tool.
+- Topic memory document per topic, filled from the report; readable and editable
+  (`GET/PUT /api/topics/{id}/memory`, version-checked, unknown fields rejected).
+- Results return to the coordinator as `event` messages; completed topics get a relay turn.
+- Cancellation with cleanup (`POST /api/topics/{id}/cancel`).
+- Web: topics panel (status, cancel, memory editor), event notes in the timeline.
+
+Acceptance evidence (live, `make test-integration`, 24 tests):
+
+- Model started three topics (Alpha/Beta/Gamma); both workers killed and restarted; Alpha
+  cancelled → Alpha `cancelled` (memory notes it, Temporal CANCELED), Beta and Gamma `completed`
+  (Temporal COMPLETED), two completion events relayed by the coordinator, no extra topics.
+- Gateway: 4th `topic.start` refused ("at most 3"); pending topic cancels in place; second cancel
+  409.
+- Memory edit: version bump on save; stale version 409; unknown field 422.
+- Browser (headless Chrome): two topics shown running, cancel button → cancelled, completed
+  topic's memory opens and edits, event notes and relay reply visible, no console errors.
+
+Bugs found and fixed:
+
+- Relaying a topic result re-started the topics from the original request (model re-read the
+  history). Fixed in trusted code: `trigger` on the turn; `topic.start` requires `user`.
+- `agent.message` was published before the workflow cleared its running turn, so `/state` read
+  right after could still show it running. The flag is now cleared before the final event.
+
+Deferred (own step before Phase 5, or folded into it): profile memory, token-budgeted context and
+conversation summaries (spec §15).
+
+Known limitations:
+
+- Live topic tokens are published to `topic:<id>` but the UI does not subscribe to them yet.
+- Topic memory is written at the end of a run, not checkpointed during it.
+- Cancelling a whole conversation turn (spec §12.6) is not implemented; topics can be cancelled.
+
 ## Decisions log
 
+- 2026-09-27: Starting a topic is split: the tool records intent (gateway, audited), the
+  workflow starts the child. The executor never touches Temporal.
+- 2026-09-27: `ExecContext.trigger` (`user`/`event`) is trusted context the executors can check.
 - 2026-09-27: `TemporalDurability` capability instead of the deprecated `TemporalAgent`.
 - 2026-09-27: Heartbeats come from a worker interceptor (PydanticAI activities do not heartbeat).
 - 2026-09-27: Conversation workflows end after 24 h idle; update-with-start revives them.

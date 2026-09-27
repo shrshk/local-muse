@@ -11,7 +11,7 @@ from muse.realtime.publisher import RealtimePublisher
 from muse.tools.gateway import ToolGateway
 from muse.tools.recorder import ActionRecorder
 from muse.tools.registry import ToolRegistry
-from muse.tools.schema import ExecContext
+from muse.tools.schema import ExecContext, ToolServices
 
 
 @dataclass(frozen=True)
@@ -19,10 +19,11 @@ class AgentRuntime:
     registry: ToolRegistry
     policy: PolicyEngine
     recorder: ActionRecorder
+    services: ToolServices
     publisher: RealtimePublisher | None
 
     def gateway(self, ctx: ExecContext) -> ToolGateway:
-        return ToolGateway(self.registry, self.policy, self.recorder, ctx)
+        return ToolGateway(self.registry, self.policy, self.recorder, self.services, ctx)
 
 
 _runtime: AgentRuntime | None = None

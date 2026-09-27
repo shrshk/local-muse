@@ -13,7 +13,7 @@ from muse.agents.deps import AgentDeps
 from muse.agents.runtime import AgentRuntime, configure_agent_runtime
 from muse.policy.engine import PolicyEngine
 from muse.tools.specs import build_registry
-from tests.fakes import FakeRecorder
+from tests.fakes import NO_SERVICES, FakeRecorder
 
 
 def scripted(first_call_args: dict[str, object]) -> FunctionModel:
@@ -39,7 +39,11 @@ def recorder() -> Iterator[FakeRecorder]:
     recorder = FakeRecorder()
     configure_agent_runtime(
         AgentRuntime(
-            registry=build_registry(), policy=PolicyEngine(), recorder=recorder, publisher=None
+            registry=build_registry(),
+            policy=PolicyEngine(),
+            recorder=recorder,
+            services=NO_SERVICES,
+            publisher=None,
         )
     )
     yield recorder

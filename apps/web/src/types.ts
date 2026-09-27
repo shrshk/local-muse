@@ -32,7 +32,7 @@ export interface Conversation {
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'event';
   content: string;
   seq: number;
   created_at: string;
@@ -53,7 +53,40 @@ export interface Action {
 export interface ConversationStatus {
   running_turn_id: string | null;
   pending_turn_ids: string[];
+  active_topic_ids: string[];
   last_error: string | null;
+}
+
+export type TopicStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface Topic {
+  id: string;
+  conversation_id: string;
+  title: string;
+  objective: string;
+  status: TopicStatus;
+  result: Json;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface TopicMemoryDocument {
+  summary: string;
+  objective: string;
+  decisions: string[];
+  sources: string[];
+  successful_commands: string[];
+  failed_approaches: string[];
+  important_artifacts: string[];
+  unfinished_work: string[];
+  next_actions: string[];
+}
+
+export interface TopicMemory {
+  topic_id: string;
+  document: TopicMemoryDocument;
+  version: number;
+  updated_at: string;
 }
 
 export interface ConversationState {
@@ -61,6 +94,7 @@ export interface ConversationState {
   seq: number;
   messages: Message[];
   actions: Action[];
+  topics: Topic[];
   status: ConversationStatus;
 }
 

@@ -106,3 +106,39 @@ realtime_channel_seqs = Table(
     Column("channel", Text, primary_key=True),
     Column("seq", BigInteger, nullable=False),
 )
+
+topics = Table(
+    "topics",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column(
+        "conversation_id",
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("objective", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("workflow_id", Text),
+    Column("result", JSONB),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Index("ix_topics_conversation_status", "conversation_id", "status"),
+)
+
+topic_memory = Table(
+    "topic_memory",
+    metadata,
+    Column(
+        "topic_id",
+        UUID(as_uuid=True),
+        ForeignKey("topics.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("document", JSONB, nullable=False),
+    Column("version", Integer, nullable=False, server_default=text("1")),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)

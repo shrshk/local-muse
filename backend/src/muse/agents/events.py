@@ -21,7 +21,7 @@ from temporalio import activity
 
 from muse.agents.deps import AgentDeps
 from muse.agents.runtime import agent_runtime
-from muse.realtime.publisher import RealtimePublisher, conversation_channel
+from muse.realtime.publisher import RealtimePublisher, conversation_channel, topic_channel
 
 
 class TokenBatcher:
@@ -54,7 +54,12 @@ class TokenBatcher:
 class TurnEventPublisher:
     def __init__(self, publisher: RealtimePublisher, deps: AgentDeps, attempt: int) -> None:
         self._publisher = publisher
-        self._channel = conversation_channel(deps.conversation_id)
+        # Topic runs stream to their own channel so they never mix into the chat bubble.
+        self._channel = (
+            topic_channel(deps.topic_id)
+            if deps.topic_id
+            else conversation_channel(deps.conversation_id)
+        )
         self._turn = str(deps.turn_id)
         self._attempt = attempt
         self._tokens = TokenBatcher()

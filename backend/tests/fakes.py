@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from muse.policy.engine import Decision
-from muse.tools.schema import ActionProposal, ExecContext, ToolResult
+from muse.tools.schema import ActionProposal, ExecContext, ToolResult, ToolServices
 
 
 @dataclass
@@ -36,5 +36,9 @@ class FakeRecorder:
         return [e[0] for e in self.events]
 
 
-def make_ctx() -> ExecContext:
-    return ExecContext(user_id=uuid.uuid4(), conversation_id=uuid.uuid4())
+def make_ctx(topic_id: uuid.UUID | None = None) -> ExecContext:
+    return ExecContext(user_id=uuid.uuid4(), conversation_id=uuid.uuid4(), topic_id=topic_id)
+
+
+# Executors under unit test never reach the database; anything that would is an integration test.
+NO_SERVICES = ToolServices(engine=None)  # type: ignore[arg-type]

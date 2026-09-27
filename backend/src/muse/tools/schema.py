@@ -4,9 +4,10 @@ import datetime as dt
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from muse.policy.classification import (
     Classification,
@@ -31,6 +32,8 @@ class ExecContext:
     conversation_id: uuid.UUID
     topic_id: uuid.UUID | None = None
     actor_id: str = "coordinator"
+    # What started this run: a user message, or an event (e.g. a topic result being relayed).
+    trigger: Literal["user", "event"] = "user"
 
 
 class ToolResult(BaseModel):
@@ -44,7 +47,14 @@ class RetryPolicy:
     max_attempts: int = 1
 
 
-Executor = Callable[[Any, ExecContext], Awaitable[JsonValue]]
+@dataclass(frozen=True)
+class ToolServices:
+    """Trusted resources executors may use. Never reaches the model."""
+
+    engine: AsyncEngine
+
+
+Executor = Callable[[Any, ExecContext, ToolServices], Awaitable[JsonValue]]
 Classifier = Callable[[Any, ExecContext], Classification]
 
 
