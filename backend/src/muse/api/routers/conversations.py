@@ -8,17 +8,21 @@ from muse.modules.auth.auth_schema import Principal
 from muse.modules.conversations.conversations_handler import (
     ConversationNotFound,
     ConversationsHandler,
-    ModelUnavailable,
+    MessageRejected,
+    WorkflowUnavailable,
 )
 from muse.modules.conversations.conversations_schema import (
+    ConversationStateView,
     ConversationView,
     CreateConversation,
     MessageView,
     SendMessage,
-    TurnResult,
 )
+from muse.workflows.schema import SendMessageAck
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
+
+NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found")
 
 
 @router.post("", response_model=ConversationView, status_code=status.HTTP_201_CREATED)
@@ -38,6 +42,18 @@ async def list_conversations(
     return await handler.list_for_user(user.id)
 
 
+@router.get("/{conversation_id}/state", response_model=ConversationStateView)
+async def state(
+    conversation_id: uuid.UUID,
+    user: Principal = Depends(current_user),
+    handler: ConversationsHandler = Depends(conversations_handler),
+) -> ConversationStateView:
+    try:
+        return await handler.state(conversation_id, user.id)
+    except ConversationNotFound as exc:
+        raise NOT_FOUND from exc
+
+
 @router.get("/{conversation_id}/messages", response_model=list[MessageView])
 async def messages(
     conversation_id: uuid.UUID,
@@ -47,7 +63,7 @@ async def messages(
     try:
         return await handler.messages(conversation_id, user.id)
     except ConversationNotFound as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found") from exc
+        raise NOT_FOUND from exc
 
 
 @router.get("/{conversation_id}/actions", response_model=list[ActionView])
@@ -59,19 +75,26 @@ async def actions(
     try:
         return await handler.actions(conversation_id, user.id)
     except ConversationNotFound as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found") from exc
+        raise NOT_FOUND from exc
 
 
-@router.post("/{conversation_id}/messages", response_model=TurnResult)
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=SendMessageAck,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def send_message(
     conversation_id: uuid.UUID,
     body: SendMessage,
     user: Principal = Depends(current_user),
     handler: ConversationsHandler = Depends(conversations_handler),
-) -> TurnResult:
+) -> SendMessageAck:
+    """Accepted once the message is persisted; the reply arrives via realtime or /state."""
     try:
         return await handler.send_message(user.id, conversation_id, body.content)
     except ConversationNotFound as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found") from exc
-    except ModelUnavailable as exc:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "model_unavailable") from exc
+        raise NOT_FOUND from exc
+    except MessageRejected as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except WorkflowUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "workflow_unavailable") from exc

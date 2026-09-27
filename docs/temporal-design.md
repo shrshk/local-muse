@@ -117,7 +117,38 @@ Memory     nothing that must survive a restart
 Temporal history is not mirrored into Postgres. Postgres state is not used to reimplement
 workflow durability.
 
-## Phase 1 scope
+## Implementation (Phase 3)
 
-Workers start, connect, and poll their queues with a single `ping` activity each (a Temporal
-worker needs at least one registration). No workflows yet.
+- **TemporalDurability, not TemporalAgent.** PydanticAI 2.x deprecates `TemporalAgent`; the
+  coordinator is a plain `Agent` with the `TemporalDurability` capability
+  (`agents/coordinator.py`). Outside a workflow it is transparent, so unit tests run the same agent.
+- **Activity names** are persisted compatibility data: `agent__coordinator__model_request_stream`,
+  `agent__coordinator__toolset__gateway__...`, `conversation.persist_message|load_turn|publish_event`.
+  Do not rename the agent (`coordinator`) or toolset (`gateway`) without draining workflows.
+- **Worker split.** `worker` (queue `muse-main`) runs `ConversationWorkflow`, conversation
+  activities, and tool / tool-event activities; `PydanticAIPlugin` registers the agent's activities
+  from the workflow's `__pydantic_ai_agents__`. `worker-model` registers only activities whose name
+  contains `__model_` and runs at `max_concurrent_activities=1` on `model-inference`.
+- **Model activity config:** start-to-close 10 min, heartbeat timeout 30 s, 3 attempts. PydanticAI
+  does not heartbeat, so `worker/interceptors.py` heartbeats every 10 s for any running activity.
+  A killed worker's model call is retried ~30 s later (tested).
+- **Deps** are ids only (`AgentDeps`), so they serialize into activities. The gateway is built inside
+  the tool activity from a per-process `AgentRuntime` configured at worker start.
+- **Tool retries** follow the tool spec: `idempotent` tools use `ToolSpec.retry.max_attempts`, all
+  others run once (per-tool `metadata={"temporal": ActivityConfig(...)}`). A retried read-only
+  call records a new proposal; `action_id` reuse across retries arrives with approvals (Phase 6).
+- **Start and send.** The API calls `execute_update_with_start_workflow` with
+  `id_conflict_policy=USE_EXISTING`, by type name (the API never imports workflow code). The
+  `send_message` Update persists the user message (id from `workflow.uuid4()`, insert is
+  idempotent) and returns `{message_id, seq, turn_id}`. Validator rejects >5 pending messages.
+- **Turn loop.** One turn at a time. `load_turn` reads the prompt and the last N messages from
+  Postgres; the agent runs; `persist_message` stores the reply. A failed run (`AgentRunError` or
+  `ActivityError` after retries) publishes `agent.failed` and records `last_error`; the workflow
+  keeps going.
+- **Lifetime.** After 24 h idle the run completes; the next message starts a new run via
+  update-with-start. Continue-As-New after 50 turns (or when Temporal suggests it), carrying only
+  `ConversationState` (ids, limits, pending turn ids). Waits for `all_handlers_finished` first.
+- **Status query** `status` → running turn, pending turns, last error. The API uses it in `/state`.
+- **Payloads** use PydanticAI's payload converter (`PydanticAIPlugin`) on every client and worker.
+- **Sandbox.** Workflow imports go through `imports_passed_through()`; the agent is built at import
+  (`agents/instances.py`) because workflows reference it at class definition.

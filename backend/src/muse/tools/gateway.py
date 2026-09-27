@@ -10,7 +10,7 @@ from muse.shared.logger import get_logger
 from muse.tools.errors import ToolExecutionError
 from muse.tools.recorder import ActionRecorder
 from muse.tools.registry import ToolRegistry
-from muse.tools.schema import ActionProposal, ExecContext, Executor, ToolIntent, ToolResult
+from muse.tools.schema import ExecContext, Executor, ToolIntent, ToolResult
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,6 @@ class ToolGateway:
         self._policy = policy
         self._recorder = recorder
         self._ctx = ctx
-        self.proposals: list[tuple[ActionProposal, DecisionKind, ToolResult]] = []
 
     async def invoke(self, intent: ToolIntent) -> ToolResult:
         spec = self._registry.get(intent.tool)
@@ -60,7 +59,6 @@ class ToolGateway:
             # Durable approval waits arrive with Temporal (Phase 6).
             result = ToolResult(ok=False, error="requires approval, which is not available yet")
 
-        self.proposals.append((proposal, decision.kind, result))
         logger.info(
             "tool_invoked",
             tool=spec.name,

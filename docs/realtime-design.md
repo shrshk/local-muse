@@ -10,7 +10,7 @@ reloading from the API.
   id, short TTL. Centrifugo verifies it with `CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY`.
 - Server publishes through the HTTP API with `CENTRIFUGO_HTTP_API_KEY`. Clients never publish.
 - Private channels (`user:`, `conversation:`, …) require a subscription token minted by the
-  backend after it checks ownership. Added with the first channel in Phase 3.
+  backend after it checks ownership: `POST /api/realtime/subscribe_token {conversation_id}`.
 - The browser reaches Centrifugo through nginx at `/connection/websocket` (same origin).
 
 ## Channels
@@ -65,3 +65,20 @@ Frames are **metadata only** over Centrifugo:
 ```
 
 The client fetches `GET /api/browser/{session_id}/frame?v=412` (JPEG). ~2 fps cap.
+
+## Implementation (Phase 3)
+
+- `realtime/publisher.py`: allocates `seq` from `realtime_channel_seqs` (upsert + 1), then POSTs
+  to Centrifugo's `/api/publish`. A Centrifugo failure is logged (`realtime_publish_failed`) and
+  swallowed; the seq is still consumed, so clients see a gap and refetch.
+- Published today on `conversation:{id}`: `agent.started`, `agent.token` (batched ~48 chars or
+  150 ms, carries `attempt`), `tool.started`, `tool.completed`, `tool.failed`, `agent.message`,
+  `agent.failed`. All carry `turn_id`.
+- Tokens are published from inside the model activity (worker-model); tool events from per-event
+  activities (worker); turn events from the workflow via the `publish_event` activity.
+- `GET /api/conversations/{id}/state` reads the channel seq **before** messages and actions, so
+  any change missing from the state arrives as an event with a higher seq (some higher-seq events
+  may already be reflected; applying them is idempotent).
+- Web client (`hooks/useConversation.ts`): drop `seq <= last`; refetch on a gap; append tokens,
+  resetting the partial text when `attempt` increases; refetch state on any event that changes
+  durable state and on every (re)subscribe.

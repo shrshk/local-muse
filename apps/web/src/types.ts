@@ -50,18 +50,29 @@ export interface Action {
   created_at: string;
 }
 
-export interface ToolCall {
-  action_id: string;
-  tool: string;
-  args: Record<string, Json>;
-  decision: string;
-  ok: boolean;
-  output: Json;
-  error: string | null;
+export interface ConversationStatus {
+  running_turn_id: string | null;
+  pending_turn_ids: string[];
+  last_error: string | null;
 }
 
-export interface TurnResult {
-  user_message: Message;
-  assistant_message: Message;
-  tool_calls: ToolCall[];
+export interface ConversationState {
+  conversation: Conversation;
+  seq: number;
+  messages: Message[];
+  actions: Action[];
+  status: ConversationStatus;
+}
+
+export interface SendAck {
+  message_id: string;
+  seq: number;
+  turn_id: string;
+}
+
+export interface RealtimeEvent {
+  type: string;
+  seq: number;
+  ts: string;
+  data: { turn_id?: string; text?: string; attempt?: number; reason?: string; [key: string]: Json | undefined };
 }

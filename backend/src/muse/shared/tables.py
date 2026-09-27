@@ -99,3 +99,10 @@ audit_events = Table(
     Index("ix_audit_events_action", "action_id"),
     Index("ix_audit_events_created", "created_at"),
 )
+
+realtime_channel_seqs = Table(
+    "realtime_channel_seqs",
+    metadata,
+    Column("channel", Text, primary_key=True),
+    Column("seq", BigInteger, nullable=False),
+)

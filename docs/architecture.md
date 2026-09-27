@@ -47,6 +47,9 @@ iPhone PWA / Mac browser ── Tailscale ──▶ web (nginx: static PWA, /api
 | centrifugo | centrifugo v6 | Ephemeral fanout | default |
 | migrate | `backend` | One-shot `alembic upgrade head` before backend/worker start | default |
 
+nginx resolves `backend` and `centrifugo` per request through Docker DNS (`resolver
+127.0.0.11`, variable upstreams); without it a recreated backend (new IP) returns 502.
+
 `sandbox-control` is `internal: true`. sandboxd has no route out. Image pulls run in the
 Docker daemon, not in sandboxd, so sandboxd does not need the default network. (The spec
 allowed default "for pulls only"; it is not needed.)
@@ -63,8 +66,11 @@ backend/src/muse/
   tools/          schema, registry, specs, gateway, recorder, executors/ (private to specs)
   policy/         classification enums, engine
   models/         provider protocol, Ollama provider, factory
+  workflows/      ConversationWorkflow + payload schemas
+  activities/     conversation persistence / publish activities
+  realtime/       Centrifugo publisher (seq from Postgres)
   # later phases, per spec §26:
-  workflows/ activities/ browser/ realtime/ notifications/ memory/
+  browser/ notifications/ memory/
 sandboxd/src/sandboxd/   separate package and image
 apps/web/                Vite + React + TypeScript PWA
 infra/                   compose, centrifugo, temporal, nginx config
@@ -88,7 +94,7 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 |---|---|
 | 1 | `service_heartbeats` (worker liveness + sandboxd reachability; see below) |
 | 2 | `users`, `conversations`, `messages`, `actions`, `audit_events` |
-| 3 | `conversation_summaries` |
+| 3 | `realtime_channel_seqs` (`conversation_summaries` moves to Phase 4 with memory) |
 | 4 | `topics`, `topic_memory`, `profile_memory` |
 | 5 | `sandboxes`, `artifacts` |
 | 6 | `approvals`, `domain_allowlist` |

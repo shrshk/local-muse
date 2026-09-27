@@ -1,28 +1,27 @@
-import { Centrifuge } from 'centrifuge';
 import { useEffect, useState } from 'react';
 
-import { api } from '../api';
+import { centrifuge } from '../realtime';
 
 export type RealtimeState = 'connecting' | 'connected' | 'disconnected';
 
-function websocketUrl(): string {
-  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${window.location.host}/connection/websocket`;
-}
-
-// Connects with a backend-minted JWT. Proves the token path end to end; no channels yet.
 export function useRealtime(): RealtimeState {
-  const [state, setState] = useState<RealtimeState>('connecting');
+  const [state, setState] = useState<RealtimeState>(() =>
+    centrifuge().state === 'connected' ? 'connected' : 'connecting',
+  );
 
   useEffect(() => {
-    const client = new Centrifuge(websocketUrl(), {
-      getToken: async () => (await api.realtimeToken()).token,
-    });
-    client.on('connecting', () => setState('connecting'));
-    client.on('connected', () => setState('connected'));
-    client.on('disconnected', () => setState('disconnected'));
-    client.connect();
-    return () => client.disconnect();
+    const client = centrifuge();
+    const onConnecting = () => setState('connecting');
+    const onConnected = () => setState('connected');
+    const onDisconnected = () => setState('disconnected');
+    client.on('connecting', onConnecting);
+    client.on('connected', onConnected);
+    client.on('disconnected', onDisconnected);
+    return () => {
+      client.removeListener('connecting', onConnecting);
+      client.removeListener('connected', onConnected);
+      client.removeListener('disconnected', onDisconnected);
+    };
   }, []);
 
   return state;

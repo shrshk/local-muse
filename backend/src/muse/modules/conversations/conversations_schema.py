@@ -1,10 +1,13 @@
-"""Shapes for conversations and chat turns."""
+"""Shapes for conversations."""
 
 import datetime as dt
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field
+
+from muse.modules.actions.actions_schema import ActionView
+from muse.workflows.schema import ConversationStatus
 
 Role = Literal["user", "assistant"]
 
@@ -32,17 +35,11 @@ class SendMessage(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
 
 
-class ToolCallView(BaseModel):
-    action_id: uuid.UUID
-    tool: str
-    args: dict[str, JsonValue]
-    decision: str
-    ok: bool
-    output: JsonValue = None
-    error: str | None = None
+class ConversationStateView(BaseModel):
+    """Authoritative state for (re)connect. Apply realtime events with seq > `seq`."""
 
-
-class TurnResult(BaseModel):
-    user_message: MessageView
-    assistant_message: MessageView
-    tool_calls: list[ToolCallView]
+    conversation: ConversationView
+    seq: int
+    messages: list[MessageView]
+    actions: list[ActionView]
+    status: ConversationStatus

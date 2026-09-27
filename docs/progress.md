@@ -7,7 +7,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 0 Design docs | done |
 | 1 Platform skeleton | done |
 | 2 Local model + policy skeleton + chat | done |
-| 3 Durable conversation | not started |
+| 3 Durable conversation | done |
 | 4 Topics | not started |
 | 5 sandboxd + sandbox | not started |
 | 6 Policy rules + approvals | not started |
@@ -103,8 +103,48 @@ Known limitations:
 - A model failure leaves the user message saved without a reply (returns 502).
 - Test users `itest-*` and `e2e-ui` accumulate in the local DB; harmless, delete at will.
 
+## Phase 3 — Durable conversation
+
+Done 2026-09-27.
+
+What works:
+
+- Each conversation is `ConversationWorkflow` (`conv-<id>`). `POST .../messages` returns 202 with
+  `{message_id, seq, turn_id}` in ~50 ms once the message is persisted; the reply is produced by
+  the workflow.
+- Coordinator runs under PydanticAI `TemporalDurability`: model requests are activities on
+  `model-inference` (worker-model, concurrency 1, heartbeats), tool calls are activities on
+  `muse-main` through the gateway.
+- Token streaming over Centrifugo with per-channel `seq`; `GET .../state` for (re)connect;
+  subscription tokens per conversation.
+- Web chat streams tokens, reconnects from `/state`, refetches on gaps.
+
+Acceptance evidence (live, `make test-integration`, 21 tests):
+
+- Kill **both** workers after the first streamed token, restart: the turn completes, tokens resume
+  with `attempt >= 2`, exactly one assistant message is stored.
+- Kill Centrifugo mid-stream: the turn completes; `/state` has the reply; state `seq` jumped past
+  the last delivered event (clients detect the gap).
+- Restart the API mid-turn: the turn completes.
+- Two concurrent turns: never more than one model activity STARTED; the other observed SCHEDULED.
+- Continue-As-New (1 turn per run): run chain shows CONTINUED_AS_NEW and the model still recalls
+  the first message (history is in Postgres).
+- Event stream is gapless while Centrifugo is up, and `state.seq` equals the last event's seq.
+
+Known limitations:
+
+- Web UI streaming/reconnect not verified in a browser this phase (the browser automation
+  connection dropped); API-level reconnect contract is covered by tests.
+- Partial streamed text is not recoverable after a page reload mid-turn (tokens are ephemeral by
+  design); the UI shows "Thinking…" until the next token or the final message.
+- A failed turn is reported (`agent.failed`, `status.last_error`) but not stored as a message.
+- Retried idempotent tool calls record a second proposal with a new `action_id`.
+
 ## Decisions log
 
+- 2026-09-27: `TemporalDurability` capability instead of the deprecated `TemporalAgent`.
+- 2026-09-27: Heartbeats come from a worker interceptor (PydanticAI activities do not heartbeat).
+- 2026-09-27: Conversation workflows end after 24 h idle; update-with-start revives them.
 - 2026-09-26: `ModelProvider` returns a PydanticAI `Model` instead of re-declaring
   `complete`/`stream` (docs/model-provider.md).
 - 2026-09-26: Removed an `env-sync` make target; permission rules block testing anything that

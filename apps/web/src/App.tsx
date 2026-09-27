@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { api } from './api';
+import { disconnectRealtime } from './realtime';
 import { ChatPage } from './components/ChatPage';
 import { LoginForm } from './components/LoginForm';
 import { StatusPage } from './components/StatusPage';
@@ -24,6 +25,7 @@ export function App() {
 
   const logout = async () => {
     await api.logout();
+    disconnectRealtime();
     setUser(null);
   };
 

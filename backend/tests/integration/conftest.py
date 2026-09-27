@@ -4,8 +4,8 @@ import os
 import pathlib
 import secrets
 import subprocess
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 
 import httpx
 import pytest
@@ -55,6 +55,22 @@ def logged_in_client() -> Iterator[httpx.Client]:
         response = client.post("/api/auth/login", json={"username": username, "password": password})
         response.raise_for_status()
         yield client
+
+
+@asynccontextmanager
+async def async_logged_in_client() -> AsyncIterator[httpx.AsyncClient]:
+    username, password = create_user()
+    async with httpx.AsyncClient(base_url=WEB_URL, timeout=660) as client:
+        response = await client.post(
+            "/api/auth/login", json={"username": username, "password": password}
+        )
+        response.raise_for_status()
+        yield client
+
+
+def model_online() -> bool:
+    with logged_in_client() as c:
+        return bool(c.get("/api/models/health").json()["status"] == "online")
 
 
 @pytest.fixture(scope="session", autouse=True)

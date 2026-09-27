@@ -1,5 +1,7 @@
 """Phase 2 acceptance: the local model answers and calls clock.now through the gateway."""
 
+import time
+
 import httpx
 import pytest
 
@@ -37,31 +39,38 @@ def test_model_runs_locally_with_no_cloud_keys(client: httpx.Client):
         assert f"{key}=" not in env
 
 
+def wait_for_reply(client: httpx.Client, conversation_id: str, timeout: float = 240) -> dict:  # type: ignore[type-arg]
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = client.get(f"/api/conversations/{conversation_id}/state").json()
+        if any(m["role"] == "assistant" for m in state["messages"]):
+            return state  # type: ignore[no-any-return]
+        time.sleep(1)
+    raise AssertionError(f"no reply within {timeout}s: {state['status']}")
+
+
 def test_local_model_calls_clock_through_the_gateway(client: httpx.Client):
     if client.get("/api/models/health").json()["status"] != "online":
         pytest.skip("local model not online")
     conversation = client.post("/api/conversations", json={}).json()
 
-    turn = client.post(
+    ack = client.post(
         f"/api/conversations/{conversation['id']}/messages",
         json={"content": "What is the current time in Asia/Tokyo? Use the clock tool."},
     )
-    assert turn.status_code == 200, turn.text
-    body = turn.json()
-    assert body["assistant_message"]["content"].strip()
+    assert ack.status_code == 202, ack.text
+    state = wait_for_reply(client, conversation["id"])
 
-    clock_calls = [c for c in body["tool_calls"] if c["tool"] == "clock.now"]
-    assert clock_calls, body
-    assert clock_calls[0]["decision"] == "ALLOW"
-    assert clock_calls[0]["ok"] is True
-
-    actions = client.get(f"/api/conversations/{conversation['id']}/actions").json()
-    recorded = next(a for a in actions if a["action_id"] == clock_calls[0]["action_id"])
-    assert recorded["status"] == "executed"
-    assert recorded["decision"] == "ALLOW"
+    assert state["messages"][0]["id"] == ack.json()["message_id"]
+    assert state["messages"][-1]["content"].strip()
+    clock = [a for a in state["actions"] if a["tool"] == "clock.now"]
+    assert clock, state
+    assert clock[0]["decision"] == "ALLOW"
+    assert clock[0]["status"] == "executed"
+    assert clock[0]["args"] == {"timezone": "Asia/Tokyo"}
 
     events = sql(
         "SELECT string_agg(event_type, ',' ORDER BY id) FROM audit_events "
-        f"WHERE action_id = '{recorded['action_id']}'"
+        f"WHERE action_id = '{clock[0]['action_id']}'"
     )
     assert events == "action.proposed,action.decided,action.executed"

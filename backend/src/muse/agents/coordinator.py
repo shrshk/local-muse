@@ -1,13 +1,23 @@
-"""Coordinator agent: answers directly and calls tools through the gateway."""
+"""Coordinator agent: answers directly and calls tools through the gateway.
+
+Durable through PydanticAI's TemporalDurability: inside a workflow, model requests and tool calls
+become activities; outside one (unit tests) the capability is transparent.
+"""
+
+from datetime import timedelta
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.durable_exec.temporal import TemporalDurability
 from pydantic_ai.models import Model
-from pydantic_ai.usage import UsageLimits
+from temporalio.common import RetryPolicy
+from temporalio.workflow import ActivityConfig
 
 from muse.agents.deps import AgentDeps
+from muse.agents.events import publish_run_events
 from muse.agents.toolset import build_toolset
 from muse.tools.registry import ToolRegistry
+
+AGENT_NAME = "coordinator"
 
 INSTRUCTIONS = """\
 You are Local Muse, a personal assistant running entirely on the user's Mac.
@@ -18,22 +28,30 @@ current date or time. Never invent tool results. If a tool returns an error, say
 MAX_REQUESTS_PER_TURN = 8
 
 
-class Coordinator:
-    def __init__(self, model: Model, registry: ToolRegistry) -> None:
-        self._agent = Agent(
-            model,
-            deps_type=AgentDeps,
-            output_type=str,
-            instructions=INSTRUCTIONS,
-            toolsets=[build_toolset(registry)],
-            retries=1,
-        )
-
-    async def reply(self, prompt: str, history: list[ModelMessage], deps: AgentDeps) -> str:
-        result = await self._agent.run(
-            prompt,
-            message_history=history,
-            deps=deps,
-            usage_limits=UsageLimits(request_limit=MAX_REQUESTS_PER_TURN),
-        )
-        return result.output
+def build_coordinator(
+    model: Model, registry: ToolRegistry, model_task_queue: str
+) -> Agent[AgentDeps, str]:
+    durability = TemporalDurability(
+        event_stream_handler=publish_run_events,
+        activity_config=ActivityConfig(
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        ),
+        # A dense local model can take minutes; heartbeats (worker interceptor) catch dead workers.
+        model_activity_config=ActivityConfig(
+            task_queue=model_task_queue,
+            start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=30),
+            retry_policy=RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=2)),
+        ),
+    )
+    return Agent(
+        model,
+        name=AGENT_NAME,
+        deps_type=AgentDeps,
+        output_type=str,
+        instructions=INSTRUCTIONS,
+        toolsets=[build_toolset(registry)],
+        retries=1,
+        capabilities=[durability],
+    )

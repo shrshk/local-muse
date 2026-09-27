@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../api';
+import { useConversation } from '../hooks/useConversation';
 import type { Action, Conversation, Message } from '../types';
 import { ToolCallChip } from './ToolCallChip';
 
@@ -17,10 +18,9 @@ function timeline(messages: Message[], actions: Action[]): TimelineItem[] {
 export function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [items, setItems] = useState<TimelineItem[]>([]);
   const [draft, setDraft] = useState('');
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const { state, streaming, error, reload, setError } = useConversation(activeId);
   const endRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = useCallback(async () => {
@@ -29,32 +29,22 @@ export function ChatPage() {
     return list;
   }, []);
 
-  const loadTimeline = useCallback(async (id: string) => {
-    const [messages, actions] = await Promise.all([api.messages(id), api.actions(id)]);
-    setItems(timeline(messages, actions));
-  }, []);
-
   useEffect(() => {
     void loadConversations().then((list) => {
       if (list.length > 0) setActiveId((current) => current ?? list[0].id);
     });
   }, [loadConversations]);
 
-  // Set when send() creates the conversation, so the effect below does not race the turn.
-  const skipNextLoad = useRef(false);
-
-  useEffect(() => {
-    if (skipNextLoad.current) {
-      skipNextLoad.current = false;
-      return;
-    }
-    if (activeId) void loadTimeline(activeId);
-    else setItems([]);
-  }, [activeId, loadTimeline]);
+  const items = state ? timeline(state.messages, state.actions) : [];
+  const busy =
+    sending ||
+    streaming !== null ||
+    Boolean(state?.status.running_turn_id) ||
+    (state?.status.pending_turn_ids.length ?? 0) > 0;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [items, pending]);
+  }, [items.length, streaming?.text]);
 
   const newConversation = async () => {
     const conversation = await api.createConversation();
@@ -65,24 +55,24 @@ export function ChatPage() {
   const send = async (e: FormEvent) => {
     e.preventDefault();
     const content = draft.trim();
-    if (!content || pending) return;
-    let id = activeId;
-    if (!id) {
-      const conversation = await api.createConversation();
-      id = conversation.id;
-      skipNextLoad.current = true;
-      setActiveId(id);
-    }
-    setDraft('');
-    setPending(content);
+    if (!content || sending) return;
+    setSending(true);
     setError(null);
     try {
+      let id = activeId;
+      if (!id) {
+        const conversation = await api.createConversation();
+        id = conversation.id;
+        setActiveId(id);
+      }
       await api.send(id, content);
+      setDraft('');
+      if (id === activeId) await reload();
+      await loadConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setPending(null);
-      await Promise.all([loadTimeline(id), loadConversations()]);
+      setSending(false);
     }
   };
 
@@ -104,7 +94,7 @@ export function ChatPage() {
       </aside>
       <section className="chat__main">
         <div className="chat__log">
-          {items.length === 0 && !pending && <p className="muted">Ask anything. Try: “What time is it in Tokyo?”</p>}
+          {items.length === 0 && !busy && <p className="muted">Ask anything. Try: “What time is it in Tokyo?”</p>}
           {items.map((item) =>
             item.kind === 'message' ? (
               <div key={item.message.id} className={`bubble bubble--${item.message.role}`}>
@@ -122,11 +112,10 @@ export function ChatPage() {
               />
             ),
           )}
-          {pending && (
-            <>
-              <div className="bubble bubble--user">{pending}</div>
-              <div className="bubble bubble--assistant bubble--thinking">Thinking…</div>
-            </>
+          {busy && (
+            <div className={`bubble bubble--assistant ${streaming?.text ? '' : 'bubble--thinking'}`}>
+              {streaming?.text || 'Thinking…'}
+            </div>
           )}
           {error && <p className="form__error">{error}</p>}
           <div ref={endRef} />
@@ -144,7 +133,7 @@ export function ChatPage() {
             placeholder="Message Local Muse"
             rows={2}
           />
-          <button type="submit" disabled={!draft.trim() || pending !== null}>
+          <button type="submit" disabled={!draft.trim() || sending}>
             Send
           </button>
         </form>

@@ -1,13 +1,16 @@
-"""Conversation CRUD and the non-durable chat turn (Phase 2; Temporal takes over in Phase 3)."""
+"""Conversation reads, and message sends that hand off to ConversationWorkflow."""
 
 import uuid
+from typing import Any
 
-from pydantic_ai.exceptions import AgentRunError
-from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 from sqlalchemy.ext.asyncio import AsyncEngine
+from temporalio.client import (
+    WithStartWorkflowOperation,
+    WorkflowUpdateFailedError,
+)
+from temporalio.common import WorkflowIDConflictPolicy
+from temporalio.service import RPCError, RPCStatusCode
 
-from muse.agents.coordinator import Coordinator
-from muse.agents.deps import AgentDeps
 from muse.modules.actions.actions_controller import ActionsController
 from muse.modules.actions.actions_schema import ActionView
 from muse.modules.conversations.conversations_controller import (
@@ -15,47 +18,51 @@ from muse.modules.conversations.conversations_controller import (
     MessagesController,
 )
 from muse.modules.conversations.conversations_schema import (
+    ConversationStateView,
     ConversationView,
     MessageView,
-    ToolCallView,
-    TurnResult,
 )
-from muse.policy.engine import PolicyEngine
+from muse.modules.realtime.realtime_controller import RealtimeSeqController
+from muse.realtime.publisher import conversation_channel
 from muse.shared.logger import get_logger
-from muse.tools.gateway import ToolGateway
-from muse.tools.recorder import ActionRecorder
-from muse.tools.registry import ToolRegistry
-from muse.tools.schema import ExecContext
+from muse.shared.settings import Settings
+from muse.shared.temporal import TemporalClientProvider
+from muse.workflows.schema import (
+    ConversationState,
+    ConversationStatus,
+    SendMessageAck,
+    SendMessageInput,
+)
 
 logger = get_logger(__name__)
 
-TITLE_LENGTH = 60
+# Referenced by name so the API process never imports workflow or agent code.
+WORKFLOW_TYPE = "ConversationWorkflow"
 
 
 class ConversationNotFound(Exception):
     pass
 
 
-class ModelUnavailable(Exception):
+class MessageRejected(Exception):
     pass
+
+
+class WorkflowUnavailable(Exception):
+    pass
+
+
+def workflow_id(conversation_id: uuid.UUID) -> str:
+    return f"conv-{conversation_id}"
 
 
 class ConversationsHandler:
     def __init__(
-        self,
-        engine: AsyncEngine,
-        coordinator: Coordinator,
-        registry: ToolRegistry,
-        policy: PolicyEngine,
-        recorder: ActionRecorder,
-        history_limit: int,
+        self, engine: AsyncEngine, temporal: TemporalClientProvider, settings: Settings
     ) -> None:
         self._engine = engine
-        self._coordinator = coordinator
-        self._registry = registry
-        self._policy = policy
-        self._recorder = recorder
-        self._history_limit = history_limit
+        self._temporal = temporal
+        self._settings = settings
 
     async def create(self, user_id: uuid.UUID, title: str | None) -> ConversationView:
         async with self._engine.begin() as conn:
@@ -75,71 +82,76 @@ class ConversationsHandler:
             await self._require(ConversationsController(conn), conversation_id, user_id)
             return await ActionsController(conn).list_for_conversation(conversation_id, user_id)
 
-    async def send_message(
-        self, user_id: uuid.UUID, conversation_id: uuid.UUID, content: str
-    ) -> TurnResult:
-        async with self._engine.begin() as conn:
-            conversations = ConversationsController(conn)
-            await self._require(conversations, conversation_id, user_id, for_update=True)
-            user_message = await MessagesController(conn).append(conversation_id, "user", content)
-            history = await MessagesController(conn).recent(
-                conversation_id, self._history_limit, before_seq=user_message.seq
-            )
-            await conversations.touch(conversation_id, title_if_empty=content[:TITLE_LENGTH])
+    async def require_owner(self, conversation_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        async with self._engine.connect() as conn:
+            await self._require(ConversationsController(conn), conversation_id, user_id)
 
-        ctx = ExecContext(user_id=user_id, conversation_id=conversation_id)
-        gateway = ToolGateway(self._registry, self._policy, self._recorder, ctx)
-        try:
-            reply = await self._coordinator.reply(
-                content, _to_model_history(history), AgentDeps(ctx=ctx, tools=gateway)
+    async def state(self, conversation_id: uuid.UUID, user_id: uuid.UUID) -> ConversationStateView:
+        async with self._engine.connect() as conn:
+            conversation = await self._require(
+                ConversationsController(conn), conversation_id, user_id
             )
-        except AgentRunError as exc:
-            logger.exception("agent_run_failed", conversation_id=str(conversation_id))
-            raise ModelUnavailable(type(exc).__name__) from exc
-
-        async with self._engine.begin() as conn:
-            await ConversationsController(conn).get(conversation_id, user_id, for_update=True)
-            assistant_message = await MessagesController(conn).append(
-                conversation_id, "assistant", reply
-            )
-            await ConversationsController(conn).touch(conversation_id)
-
-        return TurnResult(
-            user_message=user_message,
-            assistant_message=assistant_message,
-            tool_calls=[
-                ToolCallView(
-                    action_id=p.action_id,
-                    tool=p.tool,
-                    args=p.args,
-                    decision=kind.value,
-                    ok=result.ok,
-                    output=result.output,
-                    error=result.error,
-                )
-                for p, kind, result in gateway.proposals
-            ],
+            # Seq first: anything published after this read is either in the rows below or
+            # arrives as an event with a higher seq.
+            seq = await RealtimeSeqController(conn).current(conversation_channel(conversation_id))
+            messages = await MessagesController(conn).list_for_conversation(conversation_id)
+            actions = await ActionsController(conn).list_for_conversation(conversation_id, user_id)
+        return ConversationStateView(
+            conversation=conversation,
+            seq=seq,
+            messages=messages,
+            actions=actions,
+            status=await self._status(conversation_id),
         )
 
+    async def send_message(
+        self, user_id: uuid.UUID, conversation_id: uuid.UUID, content: str
+    ) -> SendMessageAck:
+        await self.require_owner(conversation_id, user_id)
+        start: WithStartWorkflowOperation[Any, None] = WithStartWorkflowOperation(
+            WORKFLOW_TYPE,
+            ConversationState(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                history_limit=self._settings.chat_history_messages,
+            ),
+            id=workflow_id(conversation_id),
+            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            task_queue=self._settings.task_queue_main,
+            result_type=type(None),
+        )
+        try:
+            client = await self._temporal.get()
+            ack: SendMessageAck = await client.execute_update_with_start_workflow(
+                "send_message",
+                SendMessageInput(content=content),
+                start_workflow_operation=start,
+                result_type=SendMessageAck,
+            )
+            return ack
+        except WorkflowUpdateFailedError as exc:
+            raise MessageRejected(str(exc.cause)) from exc
+        except (RPCError, RuntimeError) as exc:
+            logger.exception("workflow_send_failed", conversation_id=str(conversation_id))
+            raise WorkflowUnavailable(type(exc).__name__) from exc
+
+    async def _status(self, conversation_id: uuid.UUID) -> ConversationStatus:
+        try:
+            client = await self._temporal.get()
+            handle = client.get_workflow_handle(workflow_id(conversation_id))
+            status: ConversationStatus = await handle.query(
+                "status", result_type=ConversationStatus
+            )
+            return status
+        except RPCError as exc:
+            if exc.status is not RPCStatusCode.NOT_FOUND:
+                logger.warning("workflow_status_unavailable", error=exc.status.name)
+            return ConversationStatus()
+
     async def _require(
-        self,
-        controller: ConversationsController,
-        conversation_id: uuid.UUID,
-        user_id: uuid.UUID,
-        *,
-        for_update: bool = False,
+        self, controller: ConversationsController, conversation_id: uuid.UUID, user_id: uuid.UUID
     ) -> ConversationView:
-        conversation = await controller.get(conversation_id, user_id, for_update=for_update)
+        conversation = await controller.get(conversation_id, user_id)
         if conversation is None:
             raise ConversationNotFound(str(conversation_id))
         return conversation
-
-
-def _to_model_history(history: list[MessageView]) -> list[ModelMessage]:
-    out: list[ModelMessage] = []
-    for m in history:
-        if m.role == "user":
-            out.append(ModelRequest(parts=[UserPromptPart(content=m.content)]))
-        else:
-            out.append(ModelResponse(parts=[TextPart(content=m.content)]))
-    return out

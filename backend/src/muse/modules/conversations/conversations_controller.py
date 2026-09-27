@@ -3,6 +3,7 @@
 import uuid
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from muse.modules.conversations.conversations_schema import (
@@ -42,6 +43,11 @@ class ConversationsController:
         row = (await self._conn.execute(stmt)).mappings().first()
         return ConversationView.model_validate(dict(row)) if row else None
 
+    async def lock(self, conversation_id: uuid.UUID) -> None:
+        """Serializes message appends for one conversation (seq = max + 1)."""
+        stmt = select(conversations.c.id).where(conversations.c.id == conversation_id)
+        await self._conn.execute(stmt.with_for_update())
+
     async def touch(self, conversation_id: uuid.UUID, title_if_empty: str | None = None) -> None:
         values: dict[str, object] = {"updated_at": func.now()}
         if title_if_empty is not None:
@@ -55,18 +61,34 @@ class MessagesController:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
 
-    async def append(self, conversation_id: uuid.UUID, role: Role, content: str) -> MessageView:
-        # Callers hold the conversation row lock, so max(seq) + 1 cannot race.
+    async def append(
+        self, conversation_id: uuid.UUID, role: Role, content: str, message_id: uuid.UUID
+    ) -> MessageView:
+        """Idempotent on message_id. Callers hold the conversation lock, so seq cannot race."""
         next_seq = (
             select(func.coalesce(func.max(messages.c.seq), 0) + 1)
             .where(messages.c.conversation_id == conversation_id)
             .scalar_subquery()
         )
         stmt = (
-            insert(messages)
-            .values(conversation_id=conversation_id, role=role, content=content, seq=next_seq)
+            pg_insert(messages)
+            .values(
+                id=message_id,
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+                seq=next_seq,
+            )
+            .on_conflict_do_nothing(index_elements=[messages.c.id])
             .returning(messages)
         )
+        row = (await self._conn.execute(stmt)).mappings().first()
+        if row is None:
+            return await self.get(message_id)
+        return MessageView.model_validate(dict(row))
+
+    async def get(self, message_id: uuid.UUID) -> MessageView:
+        stmt = select(messages).where(messages.c.id == message_id)
         row = (await self._conn.execute(stmt)).mappings().one()
         return MessageView.model_validate(dict(row))
 

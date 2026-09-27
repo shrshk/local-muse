@@ -1,11 +1,10 @@
 import type {
-  Action,
   ConnectionToken,
   Conversation,
+  ConversationState,
   HealthReport,
-  Message,
   Principal,
-  TurnResult,
+  SendAck,
 } from './types';
 
 export class UnauthorizedError extends Error {}
@@ -39,8 +38,8 @@ export const api = {
 
   conversations: () => request<Conversation[]>('/api/conversations'),
   createConversation: () => post<Conversation>('/api/conversations', {}),
-  messages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
-  actions: (id: string) => request<Action[]>(`/api/conversations/${id}/actions`),
-  send: (id: string, content: string) =>
-    post<TurnResult>(`/api/conversations/${id}/messages`, { content }),
+  state: (id: string) => request<ConversationState>(`/api/conversations/${id}/state`),
+  send: (id: string, content: string) => post<SendAck>(`/api/conversations/${id}/messages`, { content }),
+  subscribeToken: (conversationId: string) =>
+    post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
 };
