@@ -106,6 +106,22 @@ activity. Responsibilities:
 - tool calls route through `ToolGateway` inside activities, never in workflow code;
 - the agent loop state is replayable from history; no non-deterministic calls in workflow code.
 
+## Changing workflow code
+
+Open workflows replay their history against the current code. A change that adds, removes or
+reorders commands (activities, timers, child workflows) breaks every open run that recorded the
+old order: the worker fails its workflow tasks with a nondeterminism error and the run is stuck.
+Conversations stay open for 24 h idle, so this always hits someone.
+
+- Guard such a change with `workflow.patched("<change-id>")`: new runs take the new path, old runs
+  replay the old one. Remove the guard (via `workflow.deprecate_patch`) once no open run predates it.
+- `tests/replay` replays recorded histories (conversation with topics, approvals, takeover,
+  compaction, continue-as-new; topic completed/cancelled; goal, goal run) against the current
+  code in `make check`. After a guarded change, record a new history with `make history` so both
+  paths stay covered. Record test runs only and read the payloads before committing.
+- Incident 2026-09-28: Phase 9 added `goal.activate_pending` after topic start without a guard;
+  187 test conversations opened earlier could no longer replay.
+
 ## Temporal vs Postgres
 
 ```text

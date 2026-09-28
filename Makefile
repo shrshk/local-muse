@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help env create-user build sandbox-image up up-detached down restart logs ps psql migrate \
+.PHONY: help env create-user history build sandbox-image up up-detached down restart logs ps psql migrate \
         test test-integration lint format typecheck check web-dev clean
 
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
@@ -66,6 +66,10 @@ typecheck: ## mypy strict + tsc
 	cd apps/web && npm run typecheck
 
 check: lint typecheck test ## Everything that runs without the stack
+
+history: ## Save a workflow history as a replay fixture: make history WF=conv-<id> NAME=<name>
+	$(COMPOSE) exec -T temporal temporal workflow show --address temporal:7233 -w $(WF) -o json \
+		| (cd backend && $(UV) python -m tests.replay.save $(WF) $(NAME))
 
 web-dev: ## Vite dev server on :5173, proxied to the running stack
 	cd apps/web && npm run dev

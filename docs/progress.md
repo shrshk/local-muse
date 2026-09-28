@@ -480,6 +480,8 @@ Known limitations:
 
 ## Decisions log
 
+- 2026-09-28: Workflow command changes need `workflow.patched`; `tests/replay` replays recorded
+  histories in `make check`. `index.html` is served `no-cache` so a reload picks up a new build.
 - 2026-09-27: Telegram uses long polling inside the backend, not a webhook, so there is still no
   inbound port. The notifications table doubles as the outbox instead of a new table.
 - 2026-09-27: Goals notify from structured values compared in trusted code, not from the model's
