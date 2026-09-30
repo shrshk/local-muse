@@ -481,7 +481,10 @@ Known limitations:
 
 ## Decisions log
 
-- 2026-09-29: Chrome extension planned as Phase 13, the final phase (user request).
+- 2026-09-29: Chrome extension planned as Phase 13, the final phase (user request): acting in the
+  user's own Chrome profile (existing sessions, Google sign-in, passkeys, current tab). Muse's
+  container browser stays the default; tab actions from the extension need approval. Passwords
+  stay with 1Password CLI (Chrome's saved passwords are Keychain-bound and not readable).
 - 2026-09-28: Workflow command changes need `workflow.patched`; `tests/replay` replays recorded
   histories in `make check`. `index.html` is served `no-cache` so a reload picks up a new build.
 - 2026-09-27: Telegram uses long polling inside the backend, not a webhook, so there is still no
