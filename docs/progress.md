@@ -19,6 +19,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 11 PWA / phone | not started |
 | 12 1Password CLI credentials | planned (user request) |
 | 13 Chrome extension | planned (user request) |
+| 14 Mobile app (replaces Telegram) | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -507,8 +508,27 @@ Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Mu
 - Credentials: Muse never fills them here. MV3 extensions cannot rewrite request bodies, so the
   Phase 12 boundary swap does not carry over; the user's own autofill or password manager fills.
 
+## Planned — Phase 14: mobile app replaces Telegram
+
+The spec lists a native iOS app as out of scope; this phase is a deliberate change (user request).
+
+- Parity with Telegram first: push notifications (goal results, approval requests), Approve/Deny
+  from the notification or the app, `/status`, running topics and cancel. Then chat, approvals and
+  the browser viewer from Phase 11 in the same app.
+- Build on the Phase 11 PWA: home-screen app over Tailscale plus Web Push (iOS 16.4+ when added to
+  the home screen). Push goes out through Apple/Google push services, end-to-end encrypted with
+  VAPID; still no inbound port. Go native (Expo/React Native) only if a PWA limit blocks parity,
+  such as actionable notification buttons on iOS.
+- Approvals from the app reuse `ApprovalsHandler.decide` with `channel="mobile"`; notifications
+  show the action summary only, never page content or secrets.
+- The notifications table stays the outbox; a push dispatcher replaces the Telegram one.
+- Remove Telegram (`notifications/telegram_*`, settings, Compose keys, tests) once the app has
+  parity and has run for a week.
+
 ## Decisions log
 
+- 2026-09-30: Phase 14 replaces Telegram with a mobile app (PWA + Web Push first, native only if
+  needed); Telegram is removed after parity.
 - 2026-09-30: Copy Meta Muse's Sentinel pattern for Phase 12 (credentials swapped in at the
   network boundary, not the DOM) and add an OTP/reset-link filter on page text; Phase 13 reuses the
   filter. Email filter lives in Phase 12 because webmail is already readable via the browser.
