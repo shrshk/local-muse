@@ -479,8 +479,39 @@ Known limitations:
 - Notifications older than 60 minutes when Telegram comes online are not sent.
 - No per-kind notification preferences yet.
 
+## Planned — Phase 12: credentials (1Password CLI) and account-takeover guards
+
+Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Muse").
+
+- **Credentials at the network boundary, not in the page.** `browser.fill_credential(credential_ref,
+  field)` is approval-gated and bound to the origin in the approval key. The field gets a one-time
+  placeholder; the worker's existing Playwright route guard swaps it for the real value in the
+  outgoing request, only for the approved origin, and only once. The secret is read from 1Password
+  (`op`, service account scoped to one vault) at that moment and never enters model context,
+  Temporal history, logs, the DOM or screenshots.
+- **Fallback:** sites that hash or check the password in page JavaScript break the placeholder
+  swap. For those, human takeover (typed text already bypasses history) instead of a DOM fill.
+- **Account-takeover filter.** Before any page text reaches the model, redact one-time codes,
+  password-reset links, magic sign-in links and verification links (webmail pages, and any future
+  email connector). Redaction is trusted code, applied in the browser read path, and audited as a
+  count. Consequence by design: the agent cannot finish a code-based login alone; it hands over.
+- Threat-model row 6 and a new row for the takeover filter land with the phase.
+
+## Planned — Phase 13: Chrome extension (user's own profile)
+
+- Extension in the user's Chrome talks to the backend (localhost, or Tailscale from Phase 11);
+  Muse sends steps as tool calls, the extension acts in the tab and returns what it sees.
+- Opt-in per task; the container browser stays the default. Every tab action needs approval;
+  `activeTab` rather than all-sites access; its own revocable, scoped token.
+- Page text from the extension is untrusted: same taint rules and the Phase 12 takeover filter.
+- Credentials: Muse never fills them here. MV3 extensions cannot rewrite request bodies, so the
+  Phase 12 boundary swap does not carry over; the user's own autofill or password manager fills.
+
 ## Decisions log
 
+- 2026-09-30: Copy Meta Muse's Sentinel pattern for Phase 12 (credentials swapped in at the
+  network boundary, not the DOM) and add an OTP/reset-link filter on page text; Phase 13 reuses the
+  filter. Email filter lives in Phase 12 because webmail is already readable via the browser.
 - 2026-09-29: Chrome extension planned as Phase 13, the final phase (user request): acting in the
   user's own Chrome profile (existing sessions, Google sign-in, passkeys, current tab). Muse's
   container browser stays the default; tab actions from the extension need approval. Passwords
