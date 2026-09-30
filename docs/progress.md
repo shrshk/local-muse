@@ -18,6 +18,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 10 Telegram | done |
 | 11 PWA / phone | not started |
 | 12 1Password CLI credentials | planned (user request) |
+| 13 Chrome extension | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -480,6 +481,7 @@ Known limitations:
 
 ## Decisions log
 
+- 2026-09-29: Chrome extension planned as Phase 13, the final phase (user request).
 - 2026-09-28: Workflow command changes need `workflow.patched`; `tests/replay` replays recorded
   histories in `make check`. `index.html` is served `no-cache` so a reload picks up a new build.
 - 2026-09-27: Telegram uses long polling inside the backend, not a webhook, so there is still no
