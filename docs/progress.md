@@ -17,9 +17,9 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 9 Goals | done |
 | 10 Telegram | done, then removed 2026-10-01 (local-only) |
 | 11 PWA / phone + mobile app (former 14 merged in) | next |
-| 12 1Password CLI credentials | planned (user request) |
-| 13 Chrome extension | planned (user request) |
-| 14 Skills (finance analysis first) | planned (user request) |
+| 12 Plugin system + 1Password plugin + takeover filter | planned (user request) |
+| 13 Chrome extension (as a plugin) | planned (user request) |
+| 14 Skills, shipped in plugins (finance first) | planned (user request) |
 | 15 Short video recaps | planned (user request) |
 | 16 "What if" counterfactuals | planned (user request) |
 
@@ -483,7 +483,28 @@ Known limitations:
 - Notifications older than 60 minutes when Telegram comes online are not sent.
 - No per-kind notification preferences yet.
 
-## Planned — Phase 12: credentials (1Password CLI) and account-takeover guards
+## Planned — Phase 12: plugin system, 1Password plugin, takeover filter
+
+Inspired by OpenAI Dots plugins and Meta Muse Connectors, kept local and under our policy.
+
+- **A plugin is a package that adds specs to the existing `ToolRegistry`.** Manifest
+  (`plugin.toml`): name, version; tools with args schema, classification (side effect, risk,
+  data class) and executor; skills (Phase 14); allowed network hosts; secrets by `credential_ref`
+  only; where it runs (`worker`, `sandbox`, or its own container).
+- Same path as built-in tools: every call goes through gateway → policy → approvals → audit. A
+  tool with no declared classification defaults to REQUIRE_APPROVAL. A plugin cannot register a
+  tool name that already exists or change policy rules.
+- Trusted and local only: plugins live in `plugins/` (vendored, reviewed, versioned) and are
+  enabled in settings. No install from the internet at runtime.
+- Local MCP servers can be wrapped as plugins: the manifest gives each MCP tool a classification;
+  undeclared MCP tools are not exposed. This is how MCP tools join without bypassing policy.
+- **Credential providers** are a separate plugin kind: they run only in the trusted worker and
+  their output goes only to the boundary swap below, never to the model, history or logs. The
+  1Password CLI plugin is the first one and the safety test for the plugin rules.
+- Registry and policy tests: manifest validation, default-approval for undeclared tools, name
+  collisions refused, credential-provider output unreachable from any tool result.
+
+### 1Password plugin and takeover filter
 
 Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Muse").
 
@@ -501,7 +522,9 @@ Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Mu
   count. Consequence by design: the agent cannot finish a code-based login alone; it hands over.
 - Threat-model row 6 and a new row for the takeover filter land with the phase.
 
-## Planned — Phase 13: Chrome extension (user's own profile)
+## Planned — Phase 13: Chrome extension (user's own profile), as a plugin
+
+- Packaged as a plugin: its tab actions are plugin tools with declared classifications.
 
 - Extension in the user's Chrome talks to the backend (localhost, or Tailscale from Phase 11);
   Muse sends steps as tool calls, the extension acts in the tab and returns what it sees.
@@ -533,7 +556,10 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - Telegram was already removed on 2026-10-01 (before the app), so there is no phone channel until
   this phase lands.
 
-## Planned — Phase 14: skills (finance analysis first)
+## Planned — Phase 14: skills (finance analysis first), shipped in plugins
+
+- Skills ship inside plugins (Phase 12 manifest), e.g. a `finance` plugin with its import tools,
+  analysis scripts and `SKILL.md` files.
 
 Packaged know-how the agent loads on demand, in the Agent Skills shape (a folder with a
 `SKILL.md`: name, description, instructions, plus scripts). Inspired by Anthropic's
@@ -613,6 +639,9 @@ recap videos.
 
 ## Decisions log
 
+- 2026-10-02: Phase 12 becomes the plugin system (local, trusted, policy-bound; MCP servers
+  wrappable) with 1Password as the first plugin, a credential-provider kind the model cannot read.
+  Chrome extension (13) and skills (14) ship as plugins.
 - 2026-10-02: Skills inserted as Phase 14 (finance analysis first) because recaps and what-ifs
   build on them and on its data import; recaps renumbered to 15, what-ifs to 16. Older log
   entries keep the numbers they had.
