@@ -20,6 +20,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 12 1Password CLI credentials | planned (user request) |
 | 13 Chrome extension | planned (user request) |
 | 14 Short video recaps | planned (user request) |
+| 15 "What if" counterfactuals | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -565,8 +566,29 @@ watched in a swipe feed in the mobile app. Everything renders locally.
 - External data (statements, order history, photos) is a later extension, not v1.
 - Depends on Phase 11 (feed) only; it no longer needs Phase 12.
 
+## Planned — Phase 15: "what if" counterfactuals
+
+Playful what-ifs over the user's spending and investments: "had you put that $1,200 laptop into
+bitcoin on the day you bought it, it would be worth $X today." Shown as cards and as Phase 14
+recap videos.
+
+- Data in: purchases from statement/CSV uploads first (the Phase 14 external-data extension),
+  order history through the logged-in browser later. AUTHENTICATED rules apply.
+- Prices: a trusted fetcher pulls daily closes for a fixed set of assets from a public API and
+  caches them in Postgres (needs connected mode); offline mode uses the cache only.
+- Trusted code does all the maths: units = amount / close(purchase date), value = units ×
+  close(today), plus the gain/loss. The model only picks which purchases make a good story and
+  writes the line; every number comes from code.
+- Honest by construction: the comparison assets are fixed up front (e.g. bitcoin, an S&P 500
+  index fund, a savings account), every recap shows all of them, and losses appear as often as
+  wins. The model cannot search for the asset that happened to win (hindsight cherry-picking).
+- Each card says it is hypothetical, ignores fees and taxes, and is not advice.
+- Depends on Phase 14 (videos, external data). Open: which asset set and which price source.
+
 ## Decisions log
 
+- 2026-10-02: Phase 15 adds "what if" counterfactuals; maths in trusted code, fixed asset set
+  shown in full (wins and losses), labelled hypothetical.
 - 2026-10-02: Phase 14 recaps draw on Muse's own record of accomplished work (actions, topics,
   goals, approvals); numbers from trusted queries, memory summaries for wording only.
 - 2026-10-02: Phase 14 renders with Remotion and builds 3D assets with headless Blender, both in the
