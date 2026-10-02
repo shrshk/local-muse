@@ -19,7 +19,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 11 PWA / phone + mobile app (merged with 14) | next |
 | 12 1Password CLI credentials | planned (user request) |
 | 13 Chrome extension | planned (user request) |
-| 14 Mobile app | merged into 11 |
+| 14 Short video recaps | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -531,8 +531,30 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - Telegram was already removed on 2026-10-01 (before the app), so there is no phone channel until
   this phase lands.
 
+## Planned — Phase 14: short video recaps
+
+Vertical 30–60 s videos that summarize the user's own data (spending, transactions,
+investments, photos), watched in a swipe feed in the mobile app. Everything renders locally.
+
+- Pipeline, all in the sandbox (network none): data → trusted code computes every number →
+  the model picks the story and writes the script from those numbers only → a template renders
+  charts and cards → local TTS voiceover → ffmpeg encodes 1080×1920 MP4. Numbers on screen and
+  in the voiceover come from code, never from the model (it has invented results before).
+- Sandbox image gains ffmpeg, a local TTS (Piper or Kokoro) and a render template
+  (matplotlib/Pillow frames first; Remotion only if needed).
+- Data in: CSV or statement uploads; order and account history read through the logged-in
+  browser (Phase 8) and 1Password logins (Phase 12); photos picked and uploaded from the app
+  (no host Photos access, by design). Financial data is AUTHENTICATED: tainted, staging into
+  the sandbox needs approval (existing rule).
+- Out: the video is an artifact on the worker-only volume, served only to its owner over
+  Tailscale. Pushes stay content-free ("Your weekly recap is ready").
+- Recurring recaps ("your week in spending", a monthly wrap) are goals (Phase 9).
+- Depends on Phase 11 (feed) and Phase 12 (logins). Open: which data source first.
+
 ## Decisions log
 
+- 2026-10-02: Phase 14 is short video recaps (user request); the former Phase 14 (mobile app)
+  is merged into Phase 11.
 - 2026-10-01: Telegram removed before the user started review (code, settings, Compose keys,
   fake Bot API, tests; migration 0012 drops its columns). Phase 14 merged into Phase 11.
 - 2026-09-30: Phase 14 replaces Telegram with a mobile app (PWA + Web Push first, native only if
