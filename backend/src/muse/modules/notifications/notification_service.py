@@ -1,7 +1,7 @@
 """NotificationService (spec §17): attention-worthy events, separate from high-volume realtime.
 
 Stores the notification (Postgres is the truth) and publishes `notification.created` on the
-user's channel. Telegram delivery plugs in here in Phase 10.
+user's channel. Mobile push delivery plugs in here later.
 """
 
 import uuid

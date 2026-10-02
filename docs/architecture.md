@@ -20,7 +20,7 @@ iPhone PWA / Mac browser ── Tailscale ──▶ web (nginx: static PWA, /api
                         ┌───────────────────┼──────────────────────────┐
                         ▼                   ▼                          │
                      backend ──────── centrifugo                       │
-                  (FastAPI, Telegram)       ▲                          │
+                       (FastAPI)            ▲                          │
                         │                   │ publish                  │
                         ├── postgres ◀──────┤                          │
                         └── temporal ◀── worker ──(sandbox-control)──▶ sandboxd ──▶ docker.sock
@@ -37,7 +37,7 @@ iPhone PWA / Mac browser ── Tailscale ──▶ web (nginx: static PWA, /api
 | Service | Image | Role | Networks |
 |---|---|---|---|
 | web | `apps/web` (nginx) | Static PWA; reverse proxy for `/api` and `/connection` | default |
-| backend | `backend` | HTTP API, auth, Temporal client, Centrifugo tokens, Telegram poller | default |
+| backend | `backend` | HTTP API, auth, Temporal client, Centrifugo tokens | default |
 | worker | `backend` (target `worker`, + Chromium) | Temporal worker: workflows, tools, policy, browser, sandbox client | default, sandbox-control |
 | worker-model | `backend` | Temporal worker for `model-inference` only, concurrency 1 | default |
 | sandboxd | `sandboxd` | Only holder of the Docker socket; narrow sandbox API | sandbox-control (internal) |
@@ -103,7 +103,7 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | 6 | `approvals`, `domain_allowlist`, `outbox` (demo external-write target) |
 | 7–8 | `browser_sessions`, `browser_frames`, `browser_input_inbox`, `data_taint` (+ worker-only `browser_profile` volume) |
 | 9 | `goals`, `notifications` |
-| 10 | `notifications.approval_id` + `telegram_*` columns (the table is the Telegram outbox) |
+| 10 | `notifications.approval_id` (`telegram_*` columns added in 0011, dropped in 0012) |
 | — | `connector_accounts` (schema only, when credential plumbing lands) |
 
 ### Why `service_heartbeats`
@@ -205,23 +205,10 @@ Spec §18: single owner, password login, session cookie. Landed in Phase 2.
 `notification.created` on `user:<id>`. Goals that notify also post an `event` message into
 their conversation.
 
-## Telegram (Phase 10)
+## Telegram (Phase 10, removed 2026-10-01)
 
-Off unless `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_OWNER_USERNAME` are all
-set. Runs inside the backend process (`notifications/telegram_service.py`); no webhook, no
-inbound port.
-
-- Outbound: the `notifications` table is the outbox. A dispatch loop claims rows with
-  `telegram_status IS NULL` (last 60 min, `FOR UPDATE SKIP LOCKED`) and marks them
-  `sent`/`failed`/`skipped`. Approval requests create a `kind=approval` notification in the same
-  transaction as the approval row, so a request is never lost between the two.
-- Approval messages carry Approve/Deny buttons with callback data `a:<approval_id>:<key16>:y|n`
-  (under Telegram's 64-byte limit). Buttons are only attached while the approval is PENDING.
-- Inbound: long polling `getUpdates`. Every update is gated on the allowed chat ids and audited
-  (`telegram.inbound` / `telegram.ignored`, actor `telegram:<chat_id>`). A callback is honoured
-  only if the approval belongs to the owner and the key prefix matches, then goes through
-  `ApprovalsHandler.decide(channel="telegram")`, the same path as the web UI. The message is
-  edited to show the outcome.
-- Commands: `/status`, `/topics`, `/cancel <topic-id-prefix>`. Free text gets help; it is never
-  sent to the model.
-- The client never puts the request URL (which contains the token) in errors or logs.
+Built and tested in Phase 10, then removed: a local-only setup cannot route message content
+through a third-party chat service. The mobile app (next phase) replaces it with content-free
+pushes; details and decisions go over Tailscale only. What stayed: approval requests create a
+`kind=approval` notification in the same transaction as the approval row (the future push
+outbox), and `ApprovalsHandler.decide` takes a `channel`.

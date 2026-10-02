@@ -1,4 +1,4 @@
-"""Human approval decisions from the web (Telegram joins in Phase 10).
+"""Human approval decisions (web today; the mobile app later).
 
 Checks here are for the caller; the workflow re-checks through a conditional update, so a race
 between two decisions can apply at most one.

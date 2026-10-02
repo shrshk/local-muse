@@ -78,7 +78,7 @@ class PostgresApprovalStore:
                 summary=summarize(proposal, reason),
                 expires_at=default_expiry(ttl_seconds),
             )
-            # Same transaction: an approval always has its notification (Telegram outbox).
+            # Same transaction: an approval always has its notification (the push outbox).
             await NotificationsController(conn).create(
                 proposal.user_id,
                 "approval",

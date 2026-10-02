@@ -94,7 +94,7 @@ DataClassification  PUBLIC PERSONAL AUTHENTICATED SECRET
 | 10 | `browser.navigate/snapshot`, authenticated | ALLOW, output tagged AUTHENTICATED |
 | 11 | `http.get` (public) | ALLOW |
 | 12 | `web.search` | ALLOW |
-| 13 | `notify.user` (Telegram to owner) | ALLOW |
+| 13 | `notify.user` (notification to owner) | ALLOW |
 | 14 | side_effect ∈ {MESSAGE_SEND, REMOTE_UPDATE, PURCHASE, DELETE} | REQUIRE_APPROVAL |
 | 15 | risk ∈ {EXTERNAL_WRITE, SENSITIVE_EXTERNAL_WRITE, DESTRUCTIVE} | REQUIRE_APPROVAL |
 | 16 | default | REQUIRE_APPROVAL |

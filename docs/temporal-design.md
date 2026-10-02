@@ -85,7 +85,7 @@ scheduler. Browser I/O, sandbox compute and timers on `muse-main` still overlap.
 
 1. Policy returns REQUIRE_APPROVAL → `persist_action` + approvals row (PENDING).
 2. Workflow records `approval_id` in state and waits: `workflow.wait_condition(lambda: decided)`.
-3. `decide_approval` Update (from FastAPI or the Telegram poller) validates the id is pending in
+3. `decide_approval` Update (from FastAPI) validates the id is pending in
    workflow state, sets the decision, returns ack.
 4. Expiry: the wait has a 7-day timeout → DENIED(expired).
 

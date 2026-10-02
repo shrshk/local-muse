@@ -15,11 +15,11 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 7 Browser | done |
 | 8 Authenticated browser | done |
 | 9 Goals | done |
-| 10 Telegram | done |
-| 11 PWA / phone | not started |
+| 10 Telegram | done, then removed 2026-10-01 (local-only) |
+| 11 PWA / phone + mobile app (merged with 14) | next |
 | 12 1Password CLI credentials | planned (user request) |
 | 13 Chrome extension | planned (user request) |
-| 14 Mobile app (replaces Telegram) | planned (user request) |
+| 14 Mobile app | merged into 11 |
 
 ## Phase 0 — Design docs
 
@@ -443,9 +443,10 @@ Known limitations:
 - `next_run_at` for recurring goals is an estimate (last run + interval).
 - A goal checking a logged-in page taints its conversation like any other run.
 
-## Phase 10 — Telegram
+## Phase 10 — Telegram (removed 2026-10-01)
 
-Done 2026-09-27. Design: `architecture.md` → Telegram.
+Done 2026-09-27; removed 2026-10-01 because a local-only setup cannot relay content through a
+third-party chat service. Kept as a record of what was built and tested. Design: `architecture.md` → Telegram.
 
 What works:
 
@@ -508,7 +509,7 @@ Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Mu
 - Credentials: Muse never fills them here. MV3 extensions cannot rewrite request bodies, so the
   Phase 12 boundary swap does not carry over; the user's own autofill or password manager fills.
 
-## Planned — Phase 14: mobile app replaces Telegram
+## Planned — Phase 11 (+ former 14): mobile app, replaces Telegram
 
 The spec lists a native iOS app as out of scope; this phase is a deliberate change (user request).
 
@@ -527,11 +528,13 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - Remaining third party: Tailscale's coordination server sees device metadata, not traffic.
   Headscale (self-hosted control server) removes it if wanted.
 - The notifications table stays the outbox; a push dispatcher replaces the Telegram one.
-- Remove Telegram (`notifications/telegram_*`, settings, Compose keys, tests) once the app has
-  parity and has run for a week.
+- Telegram was already removed on 2026-10-01 (before the app), so there is no phone channel until
+  this phase lands.
 
 ## Decisions log
 
+- 2026-10-01: Telegram removed before the user started review (code, settings, Compose keys,
+  fake Bot API, tests; migration 0012 drops its columns). Phase 14 merged into Phase 11.
 - 2026-09-30: Phase 14 replaces Telegram with a mobile app (PWA + Web Push first, native only if
   needed); Telegram is removed after parity.
 - 2026-10-01: Local-only rule for Phase 14: no message content through third parties. Pushes are

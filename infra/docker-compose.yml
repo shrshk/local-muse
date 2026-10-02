@@ -109,10 +109,6 @@ services:
     environment:
       <<: *app-env
       SESSION_SECRET: ${SESSION_SECRET:?add SESSION_SECRET to .env (see .env.example)}
-      # Telegram stays off unless all three are set in .env (see .env.example).
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
-      TELEGRAM_OWNER_USERNAME: ${TELEGRAM_OWNER_USERNAME:-}
     mem_limit: 1g
     restart: unless-stopped
     depends_on:
