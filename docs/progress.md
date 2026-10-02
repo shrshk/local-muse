@@ -533,13 +533,21 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 
 ## Planned — Phase 14: short video recaps
 
-Vertical 30–60 s videos that summarize the user's own data (spending, transactions,
-investments, photos), watched in a swipe feed in the mobile app. Everything renders locally.
+Vertical 30–60 s videos that recap what Muse has done for the user ("your week with Muse"),
+watched in a swipe feed in the mobile app. Everything renders locally.
 
-- Pipeline, all in the sandbox (network none): data → trusted code computes every number →
-  the model picks the story and writes the script from those numbers only → a template renders
-  charts and cards → local TTS voiceover → ffmpeg encodes 1080×1920 MP4. Numbers on screen and
-  in the voiceover come from code, never from the model (it has invented results before).
+- Data comes from Muse's own memory of things accomplished, already in Postgres; no new
+  fetching or logins:
+  - facts (trusted, recorded by code): `actions` (tool runs and results), `approvals` and their
+    decisions, `outbox` sends, `topics` (finished work and results), `goals` (runs, observed
+    value changes, notifications), `artifacts`, `browser_sessions`, `sandboxes`;
+  - colour (model-written, never a source of numbers): `topic_memory`,
+    `conversation_summaries`, `profile_memory`.
+- A trusted recap builder turns one period into a digest: counts, durations, completed topics
+  with their outcomes, goal value changes, notable actions. Every number and fact on screen comes
+  from the digest; summaries only shape the wording.
+- Pipeline, in the sandbox (network none): digest → the model picks the story and writes the
+  script from the digest only → Remotion template → local TTS → ffmpeg, 1080×1920 MP4.
 - Renderer: Remotion (React compositions) inside the sandbox, run as `npx remotion render` with a
   props JSON through `sandbox.exec`. Chrome Headless Shell, fonts and npm packages are baked into
   the image (the sandbox has no network). Templates are ours (trusted, versioned); the model only
@@ -550,17 +558,17 @@ investments, photos), watched in a swipe feed in the mobile app. Everything rend
   on CPU), used to build a cached asset library (coins, cards, icons), not per video. Not
   blender-mcp: its `execute_blender_code` runs arbitrary model code with full host access.
 - Voice: local TTS (Piper or Kokoro); ffmpeg for audio mux.
-- Data in: CSV or statement uploads; order and account history read through the logged-in
-  browser (Phase 8) and 1Password logins (Phase 12); photos picked and uploaded from the app
-  (no host Photos access, by design). Financial data is AUTHENTICATED: tainted, staging into
-  the sandbox needs approval (existing rule).
-- Out: the video is an artifact on the worker-only volume, served only to its owner over
-  Tailscale. Pushes stay content-free ("Your weekly recap is ready").
-- Recurring recaps ("your week in spending", a monthly wrap) are goals (Phase 9).
-- Depends on Phase 11 (feed) and Phase 12 (logins). Open: which data source first.
+- Privacy: tainted conversations and AUTHENTICATED artifacts stay out of the digest unless the
+  user approves including them; profile memory already excludes secrets. The video is an
+  artifact for its owner only, served over Tailscale; pushes stay content-free.
+- Recurring recaps (weekly, monthly wrap) are goals (Phase 9).
+- External data (statements, order history, photos) is a later extension, not v1.
+- Depends on Phase 11 (feed) only; it no longer needs Phase 12.
 
 ## Decisions log
 
+- 2026-10-02: Phase 14 recaps draw on Muse's own record of accomplished work (actions, topics,
+  goals, approvals); numbers from trusted queries, memory summaries for wording only.
 - 2026-10-02: Phase 14 renders with Remotion and builds 3D assets with headless Blender, both in the
   sandbox; no Remotion or Blender MCP at runtime (outside policy; blender-mcp runs arbitrary code).
 - 2026-10-02: Phase 14 is short video recaps (user request); the former Phase 14 (mobile app)
