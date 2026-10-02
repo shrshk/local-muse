@@ -540,8 +540,16 @@ investments, photos), watched in a swipe feed in the mobile app. Everything rend
   the model picks the story and writes the script from those numbers only → a template renders
   charts and cards → local TTS voiceover → ffmpeg encodes 1080×1920 MP4. Numbers on screen and
   in the voiceover come from code, never from the model (it has invented results before).
-- Sandbox image gains ffmpeg, a local TTS (Piper or Kokoro) and a render template
-  (matplotlib/Pillow frames first; Remotion only if needed).
+- Renderer: Remotion (React compositions) inside the sandbox, run as `npx remotion render` with a
+  props JSON through `sandbox.exec`. Chrome Headless Shell, fonts and npm packages are baked into
+  the image (the sandbox has no network). Templates are ours (trusted, versioned); the model only
+  fills props. No Remotion MCP at runtime: the official one is docs-only and deprecated (Remotion
+  Agent Skills replace it, a dev-time aid), and a runtime MCP would be a tool path outside the
+  registry and policy. Check the Remotion licence (free for individuals) before shipping.
+- 3D assets: headless Blender (`blender -b -P script.py`) in its own sandbox image (large, slow
+  on CPU), used to build a cached asset library (coins, cards, icons), not per video. Not
+  blender-mcp: its `execute_blender_code` runs arbitrary model code with full host access.
+- Voice: local TTS (Piper or Kokoro); ffmpeg for audio mux.
 - Data in: CSV or statement uploads; order and account history read through the logged-in
   browser (Phase 8) and 1Password logins (Phase 12); photos picked and uploaded from the app
   (no host Photos access, by design). Financial data is AUTHENTICATED: tainted, staging into
@@ -553,6 +561,8 @@ investments, photos), watched in a swipe feed in the mobile app. Everything rend
 
 ## Decisions log
 
+- 2026-10-02: Phase 14 renders with Remotion and builds 3D assets with headless Blender, both in the
+  sandbox; no Remotion or Blender MCP at runtime (outside policy; blender-mcp runs arbitrary code).
 - 2026-10-02: Phase 14 is short video recaps (user request); the former Phase 14 (mobile app)
   is merged into Phase 11.
 - 2026-10-01: Telegram removed before the user started review (code, settings, Compose keys,
