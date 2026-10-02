@@ -16,11 +16,12 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 8 Authenticated browser | done |
 | 9 Goals | done |
 | 10 Telegram | done, then removed 2026-10-01 (local-only) |
-| 11 PWA / phone + mobile app (merged with 14) | next |
+| 11 PWA / phone + mobile app (former 14 merged in) | next |
 | 12 1Password CLI credentials | planned (user request) |
 | 13 Chrome extension | planned (user request) |
-| 14 Short video recaps | planned (user request) |
-| 15 "What if" counterfactuals | planned (user request) |
+| 14 Skills (finance analysis first) | planned (user request) |
+| 15 Short video recaps | planned (user request) |
+| 16 "What if" counterfactuals | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -510,7 +511,7 @@ Modelled on Meta Muse's Sentinel (research.meta.ai, "How We Built Safety Into Mu
 - Credentials: Muse never fills them here. MV3 extensions cannot rewrite request bodies, so the
   Phase 12 boundary swap does not carry over; the user's own autofill or password manager fills.
 
-## Planned — Phase 11 (+ former 14): mobile app, replaces Telegram
+## Planned — Phase 11 (+ former mobile-app phase): mobile app, replaces Telegram
 
 The spec lists a native iOS app as out of scope; this phase is a deliberate change (user request).
 
@@ -532,7 +533,32 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - Telegram was already removed on 2026-10-01 (before the app), so there is no phone channel until
   this phase lands.
 
-## Planned — Phase 14: short video recaps
+## Planned — Phase 14: skills (finance analysis first)
+
+Packaged know-how the agent loads on demand, in the Agent Skills shape (a folder with a
+`SKILL.md`: name, description, instructions, plus scripts). Inspired by Anthropic's
+financial-services skills and the claude-cookbooks finance notebooks.
+
+- Progressive loading: the coordinator sees only each skill's name and one-line description;
+  `skills.load(name)` (READ_ONLY) returns the instructions when a request matches. Keeps the
+  32k context of the local model small.
+- Scripts do the analysis, in the sandbox (pandas): the model chooses the skill, runs its
+  scripts, explains the output. Every number comes from a script. Instructions are written for a
+  27B local model: short, explicit steps, fixed output schema.
+- Skills are trusted code: vendored in the repo, reviewed, versioned. No install from the
+  internet at runtime. A skill cannot add tools or bypass policy; its calls still go through
+  the gateway.
+- Data import lands here (moved from Phase 15): CSV/statement upload → normalised
+  `transactions` and `holdings` tables, AUTHENTICATED-tagged. Order history via the browser later.
+- Starter skills: spending habits (categories, recurring subscriptions, month-over-month, unusual
+  charges), budget check, portfolio review (allocation, concentration, fees, performance against
+  a benchmark, simple risk), and a monthly money summary. Outputs: chat answer, a chart
+  artifact, optional goal ("run this every month").
+- Third-party skills (e.g. Anthropic's, built for institutions) are adapted, not copied blindly;
+  check each licence. Answers are labelled as analysis, not advice.
+- Phases 15 and 16 build on it: a recap and a what-if become skills too.
+
+## Planned — Phase 15: short video recaps
 
 Vertical 30–60 s videos that recap what Muse has done for the user ("your week with Muse"),
 watched in a swipe feed in the mobile app. Everything renders locally.
@@ -563,16 +589,16 @@ watched in a swipe feed in the mobile app. Everything renders locally.
   user approves including them; profile memory already excludes secrets. The video is an
   artifact for its owner only, served over Tailscale; pushes stay content-free.
 - Recurring recaps (weekly, monthly wrap) are goals (Phase 9).
-- External data (statements, order history, photos) is a later extension, not v1.
+- External data (statements, order history, photos) arrives with Phase 14's data import.
 - Depends on Phase 11 (feed) only; it no longer needs Phase 12.
 
-## Planned — Phase 15: "what if" counterfactuals
+## Planned — Phase 16: "what if" counterfactuals
 
 Playful what-ifs over the user's spending and investments: "had you put that $1,200 laptop into
-bitcoin on the day you bought it, it would be worth $X today." Shown as cards and as Phase 14
+bitcoin on the day you bought it, it would be worth $X today." Shown as cards and as Phase 15
 recap videos.
 
-- Data in: purchases from statement/CSV uploads first (the Phase 14 external-data extension),
+- Data in: purchases from Phase 14's data import (statements/CSV),
   order history through the logged-in browser later. AUTHENTICATED rules apply.
 - Prices: a trusted fetcher pulls daily closes for a fixed set of assets from a public API and
   caches them in Postgres (needs connected mode); offline mode uses the cache only.
@@ -583,10 +609,13 @@ recap videos.
   index fund, a savings account), every recap shows all of them, and losses appear as often as
   wins. The model cannot search for the asset that happened to win (hindsight cherry-picking).
 - Each card says it is hypothetical, ignores fees and taxes, and is not advice.
-- Depends on Phase 14 (videos, external data). Open: which asset set and which price source.
+- Depends on Phase 14 (data, skills) and Phase 15 (videos). Open: which asset set and which price source.
 
 ## Decisions log
 
+- 2026-10-02: Skills inserted as Phase 14 (finance analysis first) because recaps and what-ifs
+  build on them and on its data import; recaps renumbered to 15, what-ifs to 16. Older log
+  entries keep the numbers they had.
 - 2026-10-02: Phase 15 adds "what if" counterfactuals; maths in trusted code, fixed asset set
   shown in full (wins and losses), labelled hypothetical.
 - 2026-10-02: Phase 14 recaps draw on Muse's own record of accomplished work (actions, topics,
