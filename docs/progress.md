@@ -515,12 +515,17 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - Parity with Telegram first: push notifications (goal results, approval requests), Approve/Deny
   from the notification or the app, `/status`, running topics and cancel. Then chat, approvals and
   the browser viewer from Phase 11 in the same app.
-- Build on the Phase 11 PWA: home-screen app over Tailscale plus Web Push (iOS 16.4+ when added to
-  the home screen). Push goes out through Apple/Google push services, end-to-end encrypted with
-  VAPID; still no inbound port. Go native (Expo/React Native) only if a PWA limit blocks parity,
-  such as actionable notification buttons on iOS.
-- Approvals from the app reuse `ApprovalsHandler.decide` with `channel="mobile"`; notifications
-  show the action summary only, never page content or secrets.
+- Why: a local-only setup cannot route its content through a third-party chat service. Telegram
+  stores every message (action summaries, goal results) on its servers.
+- No content leaves the Mac. iOS can only wake a closed app through Apple's push service (APNs,
+  also behind Web Push), so pushes are content-free: an opaque id and "Muse needs you". The app
+  then fetches the details from the Mac over Tailscale. Apple sees only that a push happened.
+- Decisions never travel through a push service: Approve/Deny is an authenticated call from the
+  app to the backend over Tailscale, through `ApprovalsHandler.decide` with `channel="mobile"`.
+- Build on the Phase 11 PWA (home-screen app over Tailscale, Web Push on iOS 16.4+). Go native
+  (Expo/React Native) only if a PWA limit blocks parity, such as notification action buttons.
+- Remaining third party: Tailscale's coordination server sees device metadata, not traffic.
+  Headscale (self-hosted control server) removes it if wanted.
 - The notifications table stays the outbox; a push dispatcher replaces the Telegram one.
 - Remove Telegram (`notifications/telegram_*`, settings, Compose keys, tests) once the app has
   parity and has run for a week.
@@ -529,6 +534,8 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 
 - 2026-09-30: Phase 14 replaces Telegram with a mobile app (PWA + Web Push first, native only if
   needed); Telegram is removed after parity.
+- 2026-10-01: Local-only rule for Phase 14: no message content through third parties. Pushes are
+  content-free wake-ups; details and decisions go over Tailscale only.
 - 2026-09-30: Copy Meta Muse's Sentinel pattern for Phase 12 (credentials swapped in at the
   network boundary, not the DOM) and add an OTP/reset-link filter on page text; Phase 13 reuses the
   filter. Email filter lives in Phase 12 because webmail is already readable via the browser.
