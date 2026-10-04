@@ -104,6 +104,11 @@ class GoalActivities:
             active=row["status"] == GoalStatus.ACTIVE.value,
         )
 
+    @activity.defn(name="goal.mark_running")
+    async def mark_running(self, goal_id: uuid.UUID) -> None:
+        async with self._engine.begin() as conn:
+            await GoalsController(conn).set(goal_id, running_since=dt.datetime.now(dt.UTC))
+
     @activity.defn(name="goal.record")
     async def record(self, request: RecordObservationInput) -> bool:
         now = dt.datetime.now(dt.UTC)
@@ -120,6 +125,7 @@ class GoalActivities:
                 last_condition=request.condition_met,
                 last_summary=request.summary,
                 last_run_at=now,
+                running_since=None,
                 run_count=goal["run_count"] + 1,
                 notify_count=goal["notify_count"] + (1 if notify else 0),
                 status=GoalStatus.COMPLETED.value if done else goal["status"],
@@ -162,6 +168,7 @@ class GoalActivities:
                 request.goal_id,
                 last_summary=f"The check failed ({request.error}).",
                 last_run_at=dt.datetime.now(dt.UTC),
+                running_since=None,
             )
 
     @activity.defn(name="goal.set_status")

@@ -67,6 +67,7 @@ class GoalScheduler:
                 # A slow check never stacks up behind itself.
                 policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
             ),
+            trigger_immediately=True,  # the first check runs now, not one interval from now
         )
 
     async def cancel(self, goal: GoalView) -> None:

@@ -23,7 +23,9 @@ class GoalTiming(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    after_minutes: int | None = Field(default=None, ge=1, le=MAX_DELAY_MINUTES)
+    after_minutes: int | None = Field(
+        default=None, ge=0, le=MAX_DELAY_MINUTES, description="0 = check now"
+    )
     at: AwareDatetime | None = Field(default=None, description="ISO time with timezone")
     every_minutes: int | None = Field(default=None, ge=1, le=MAX_EVERY_MINUTES)
 
@@ -41,8 +43,8 @@ class GoalTiming(BaseModel):
     def first_run(self, now: dt.datetime) -> dt.datetime:
         if self.at is not None:
             return self.at
-        minutes = self.after_minutes or self.every_minutes or 0
-        return now + dt.timedelta(minutes=minutes)
+        # Recurring goals check right away, then every N minutes.
+        return now + dt.timedelta(minutes=self.after_minutes or 0)
 
 
 class GoalFields(GoalTiming):
@@ -77,3 +79,6 @@ class GoalView(BaseModel):
     run_count: int
     notify_count: int
     created_at: dt.datetime
+    running_since: dt.datetime | None = None
+    progress: str | None = None  # latest step of a running check: "browser.navigate bing.com"
+    progress_steps: int = 0

@@ -9,16 +9,21 @@ from pydantic_ai.models import Model
 
 from muse.agents.coordinator import build_durability
 from muse.agents.deps import AgentDeps
+from muse.agents.prompts import WEB_RESEARCH
 from muse.agents.toolset import build_toolset
 from muse.tools.registry import ToolRegistry
 
 AGENT_NAME = "topic_worker"
 NO_TOPIC_TOOLS = frozenset({"topic.start", "goal.create"})
 
-INSTRUCTIONS = """\
+INSTRUCTIONS = (
+    """\
 You are a Local Muse background worker. You pursue exactly one objective, given below, without
 talking to the user. Use tools when they help; never invent tool results. When you are done,
-return a concise report. List anything you could not finish under unfinished_work."""
+return a concise report. List anything you could not finish under unfinished_work.
+"""
+    + WEB_RESEARCH
+)
 
 DEFAULT_STEP_LIMIT = 60
 

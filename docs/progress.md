@@ -664,6 +664,13 @@ recap videos.
 
 ## Decisions log
 
+- 2026-10-04: Goal fixes after the first manual test (a goal felt like it did nothing for 9 min):
+  "Once, now" (`after_minutes=0`) and recurring goals check immediately (`trigger_immediately`);
+  `goals.running_since` (0013) plus steps derived from `actions` show "Checking now… N steps,
+  last: browser.navigate host" in the Goals tab (3 s poll while running); one shared web-research
+  prompt (start from Bing search/shop, no guessed deep URLs, skip blocked sites). The new
+  `goal.mark_running` activity is behind `workflow.patched("goal-run-progress")`; replay tests
+  pass. Live: a check-now goal showed progress at 10 s and finished at 35 s.
 - 2026-10-04: Gaps vs Meta Muse / OpenAI Dots placed: interruption budget in Phase 11, standing
   approvals in Phase 12, proactive ideas as Phase 17. Model strength is not a gap to plan for:
   users who want speed can set an Anthropic API key (`MODEL_PROVIDER`), others accept 27B speed.

@@ -18,7 +18,7 @@ from tests.fakes import NO_SERVICES, make_ctx
 
 @pytest.mark.parametrize(
     "timing",
-    [{}, {"after_minutes": 5, "every_minutes": 5}, {"after_minutes": 0}, {"every_minutes": -1}],
+    [{}, {"after_minutes": 5, "every_minutes": 5}, {"after_minutes": -1}, {"every_minutes": 0}],
 )
 def test_timing_needs_exactly_one_valid_choice(timing: dict[str, Any]):
     with pytest.raises(ValidationError):
@@ -32,6 +32,9 @@ def test_timing_kinds_and_first_run():
     assert tomorrow.first_run(now) == now + dt.timedelta(days=1)
     recurring = GoalTiming(every_minutes=30)
     assert recurring.kind == "recurring"
+    assert recurring.first_run(now) == now, "recurring goals check right away"
+    now_once = GoalTiming(after_minutes=0)
+    assert now_once.kind == "once" and now_once.first_run(now) == now
     at = dt.datetime(2026, 9, 28, 9, 0, tzinfo=dt.UTC)
     assert GoalTiming(at=at).first_run(now) == at
 

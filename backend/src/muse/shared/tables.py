@@ -326,6 +326,7 @@ goals = Table(
     Column("next_run_at", DateTime(timezone=True)),
     Column("run_count", Integer, nullable=False, server_default=text("0")),
     Column("notify_count", Integer, nullable=False, server_default=text("0")),
+    Column("running_since", DateTime(timezone=True)),  # set while a check runs
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Index("ix_goals_user_status", "user_id", "status"),

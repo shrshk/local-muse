@@ -6,6 +6,7 @@ from pydantic_ai.models import Model
 
 from muse.agents.coordinator import build_durability
 from muse.agents.deps import AgentDeps
+from muse.agents.prompts import WEB_RESEARCH
 from muse.agents.toolset import build_toolset
 from muse.tools.registry import ToolRegistry
 
@@ -13,13 +14,17 @@ AGENT_NAME = "goal_checker"
 NO_NESTED_WORK = frozenset({"topic.start", "goal.create"})
 REQUEST_LIMIT = 20
 
-INSTRUCTIONS = """\
+INSTRUCTIONS = (
+    """\
 You run one scheduled check for the user, without talking to them. Use tools when they help;
 never invent tool results. Report:
 - value: the answer in the shortest canonical form (a number, a word, a short phrase), worded
   the same way every time the underlying state is the same, so runs can be compared.
 - condition_met: if a condition is given, whether it is true right now; otherwise null.
-- summary: one or two sentences for the user."""
+- summary: one or two sentences for the user.
+"""
+    + WEB_RESEARCH
+)
 
 
 class GoalObservation(BaseModel):

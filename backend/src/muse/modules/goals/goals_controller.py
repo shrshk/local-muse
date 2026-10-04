@@ -3,12 +3,13 @@
 import datetime as dt
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from muse.modules.goals.goals_schema import GoalFields, GoalStatus, GoalView
-from muse.shared.tables import goals
+from muse.shared.tables import actions, goals
 
 MAX_ACTIVE_GOALS = 20
 
@@ -79,7 +80,27 @@ class GoalsController:
     async def list_for_user(self, user_id: uuid.UUID) -> list[GoalView]:
         stmt = select(goals).where(goals.c.user_id == user_id).order_by(goals.c.created_at.desc())
         rows = (await self._conn.execute(stmt)).mappings().all()
-        return [GoalView.model_validate(dict(r)) for r in rows]
+        views = [GoalView.model_validate(dict(r)) for r in rows]
+        for view in views:
+            if view.running_since is not None:
+                view.progress_steps, view.progress = await self._progress(
+                    view.id, view.running_since
+                )
+        return views
+
+    async def _progress(self, goal_id: uuid.UUID, since: dt.datetime) -> tuple[int, str | None]:
+        """Steps of the running check, from the actions it recorded (tagged with the goal id)."""
+        stmt = (
+            select(actions.c.tool, actions.c.proposal["args"]["url"].astext.label("url"))
+            .where(actions.c.topic_id == goal_id, actions.c.created_at >= since)
+            .order_by(actions.c.created_at.desc())
+        )
+        rows = (await self._conn.execute(stmt)).all()
+        if not rows:
+            return 0, None
+        tool, url = rows[0]
+        host = urlsplit(url).hostname if url else None
+        return len(rows), f"{tool} {host}" if host else tool
 
     async def set(self, goal_id: uuid.UUID, **values: Any) -> None:
         await self._conn.execute(

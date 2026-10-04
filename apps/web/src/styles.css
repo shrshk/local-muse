@@ -112,6 +112,7 @@ button.link { border: none; background: none; color: var(--muted); padding: 4px;
 .facts { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
 .fact { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
 .fact__head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.875rem; }
+.goal__progress { font-size: 0.875rem; color: var(--connecting); }
 .fact__edit { display: flex; gap: 8px; }
 .fact__edit input, .fact-form input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; font-size: 1rem; }
 @media (min-width: 640px) { .fact-form { grid-template-columns: 1fr 2fr auto; align-items: start; } .fact-form .form__error { grid-column: 1 / -1; } }

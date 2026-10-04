@@ -177,6 +177,7 @@ class WorkerProcess:
                 *browser_activities,
                 goals.activate_pending,
                 goals.load,
+                goals.mark_running,
                 goals.record,
                 goals.record_failure,
                 goals.set_status,

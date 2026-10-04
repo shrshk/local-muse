@@ -177,6 +177,9 @@ export interface Goal {
   run_count: number;
   notify_count: number;
   created_at: string;
+  running_since: string | null;
+  progress: string | null;
+  progress_steps: number;
 }
 
 export interface AppNotification {

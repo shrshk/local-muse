@@ -96,6 +96,14 @@ class GoalRunWorkflow(PydanticAIWorkflow):
         )
         if goal is None or not goal.active:
             return False
+        # Patched: histories recorded before this activity existed replay without it.
+        if workflow.patched("goal-run-progress"):
+            await workflow.execute_activity_method(
+                GoalActivities.mark_running,
+                goal.goal_id,
+                start_to_close_timeout=TIMEOUT,
+                retry_policy=RETRY,
+            )
         try:
             return await self._check(goal)
         finally:

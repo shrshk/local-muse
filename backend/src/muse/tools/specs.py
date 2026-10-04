@@ -204,7 +204,8 @@ def build_registry() -> ToolRegistry:
                     "Schedule a check for later: once (after_minutes or at) or recurring "
                     "(every_minutes). With a condition, the user is notified when it becomes "
                     "true; without one, when the result changes. E.g. 'check again tomorrow' = "
-                    "after_minutes 1440."
+                    "after_minutes 1440; 'check now' = after_minutes 0. Recurring goals also "
+                    "check right away."
                 ),
                 args_model=goals.GoalCreateArgs,
                 classify=_local_mutation,

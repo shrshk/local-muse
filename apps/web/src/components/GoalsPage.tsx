@@ -4,6 +4,18 @@ import { api } from '../api';
 import type { AppNotification, Conversation, Goal } from '../types';
 
 const POLL_MS = 10_000;
+const RUNNING_POLL_MS = 3_000;
+// A check that started longer ago than this is treated as stuck, not running.
+const RUNNING_STALE_MS = 30 * 60_000;
+
+function running(goal: Goal): boolean {
+  return !!goal.running_since && Date.now() - new Date(goal.running_since).getTime() < RUNNING_STALE_MS;
+}
+
+function progressText(goal: Goal): string {
+  const steps = goal.progress_steps === 1 ? '1 step' : `${goal.progress_steps} steps`;
+  return goal.progress ? `Checking now… ${steps}, last: ${goal.progress}` : 'Checking now…';
+}
 
 function schedule(goal: Goal): string {
   if (goal.kind === 'recurring') return `every ${goal.every_minutes} min`;
@@ -14,7 +26,7 @@ function GoalForm({ conversations, onCreated }: { conversations: Conversation[];
   const [title, setTitle] = useState('');
   const [objective, setObjective] = useState('');
   const [condition, setCondition] = useState('');
-  const [mode, setMode] = useState<'after_minutes' | 'every_minutes'>('after_minutes');
+  const [mode, setMode] = useState<'now' | 'after_minutes' | 'every_minutes'>('now');
   const [minutes, setMinutes] = useState(60);
   const [conversationId, setConversationId] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +44,7 @@ function GoalForm({ conversations, onCreated }: { conversations: Conversation[];
         title,
         objective,
         condition: condition || null,
-        [mode]: minutes,
+        ...(mode === 'now' ? { after_minutes: 0 } : { [mode]: minutes }),
       });
       setTitle('');
       setObjective('');
@@ -60,11 +72,16 @@ function GoalForm({ conversations, onCreated }: { conversations: Conversation[];
       </label>
       <div className="goal-form__timing">
         <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+          <option value="now">Once, now</option>
           <option value="after_minutes">Once, after</option>
-          <option value="every_minutes">Every</option>
+          <option value="every_minutes">Every (first check now)</option>
         </select>
-        <input type="number" min={1} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} />
-        <span className="muted">minutes</span>
+        {mode !== 'now' && (
+          <>
+            <input type="number" min={1} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} />
+            <span className="muted">minutes</span>
+          </>
+        )}
       </div>
       <label>
         Report into
@@ -96,11 +113,12 @@ export function GoalsPage() {
     setConversations(c);
   }, []);
 
+  const anyRunning = goals.some(running);
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), POLL_MS);
+    const id = setInterval(() => void load(), anyRunning ? RUNNING_POLL_MS : POLL_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, anyRunning]);
 
   const open = goals.filter((g) => g.status === 'active' || g.status === 'pending');
   const past = goals.filter((g) => g.status !== 'active' && g.status !== 'pending').slice(0, 10);
@@ -143,6 +161,7 @@ export function GoalsPage() {
             </div>
             <span className="muted">{g.objective}</span>
             {g.condition && <span className="muted">Notify when: {g.condition}</span>}
+            {running(g) && <span className="goal__progress">{progressText(g)}</span>}
             <span className="muted">
               {g.next_run_at ? `next ${new Date(g.next_run_at).toLocaleString()} · ` : ''}
               {g.run_count} runs · {g.notify_count} notifications
