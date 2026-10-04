@@ -22,6 +22,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 14 Skills, shipped in plugins (finance first) | planned (user request) |
 | 15 Short video recaps | planned (user request) |
 | 16 "What if" counterfactuals | planned (user request) |
+| 17 Proactive ideas | planned (user request) |
 
 ## Phase 0 — Design docs
 
@@ -501,6 +502,12 @@ Inspired by OpenAI Dots plugins and Meta Muse Connectors, kept local and under o
 - **Credential providers** are a separate plugin kind: they run only in the trusted worker and
   their output goes only to the boundary swap below, never to the model, history or logs. The
   1Password CLI plugin is the first one and the safety test for the plugin rules.
+- **Standing approvals** (gap vs Meta Muse "previously authorized" tasks): on approve, an
+  "always allow this" option creates a narrow rule: same tool, same destination (origin or
+  recipient), same or lower risk, optional expiry. Shown and revocable in the Approvals tab,
+  audited on create and on every use. Never offered for DESTRUCTIVE, PURCHASE,
+  SENSITIVE_EXTERNAL_WRITE, credential fills or AUTHENTICATED data leaving the machine. Policy
+  checks standing rules after its DENY rules, so a rule can never unlock a denied action.
 - Registry and policy tests: manifest validation, default-approval for undeclared tools, name
   collisions refused, credential-provider output unreachable from any tool result.
 
@@ -555,6 +562,11 @@ The spec lists a native iOS app as out of scope; this phase is a deliberate chan
 - The notifications table stays the outbox; a push dispatcher replaces the Telegram one.
 - Telegram was already removed on 2026-10-01 (before the app), so there is no phone channel until
   this phase lands.
+- **Interruption budget** (gap vs Meta Muse): every push carries a kind (approval, goal result,
+  idea, ...). Approvals always push. Other kinds have a per-kind level (all / important only /
+  none) and a daily cap; extra items wait in the in-app feed. Each push and feed item has
+  "more like this / less / none", which adjusts that kind's level. Trusted code decides; the
+  model can rate importance but cannot raise the cap.
 
 ## Planned — Phase 14: skills (finance analysis first), shipped in plugins
 
@@ -637,8 +649,24 @@ recap videos.
 - Each card says it is hypothetical, ignores fees and taxes, and is not advice.
 - Depends on Phase 14 (data, skills) and Phase 15 (videos). Open: which asset set and which price source.
 
+## Planned — Phase 17: proactive ideas (gap vs Meta Muse Ideas, OpenAI Dots research)
+
+- A daily background run (a goal, Phase 9) reviews the user's goals, profile memory, recent
+  topics and conversation summaries, then proposes a few ideas: a follow-up, something to check,
+  a recap or skill worth running. Shown in an Ideas tab; accepting one starts a topic or a goal.
+- Proactive research: for active goals, the run may gather public information (READ_ONLY tools
+  only) and save findings as topic memory, so answers are ready before the user asks. Anything
+  beyond READ_ONLY still needs approval; ideas never act on their own.
+- Delivery goes through the Phase 11 interruption budget as kind `idea`; rejected ideas and
+  "less like this" feed back into the next run's prompt.
+- Runs on the model queue at low priority, after user turns; tainted conversations are excluded
+  unless the user opts in.
+
 ## Decisions log
 
+- 2026-10-04: Gaps vs Meta Muse / OpenAI Dots placed: interruption budget in Phase 11, standing
+  approvals in Phase 12, proactive ideas as Phase 17. Model strength is not a gap to plan for:
+  users who want speed can set an Anthropic API key (`MODEL_PROVIDER`), others accept 27B speed.
 - 2026-10-02: Phase 12 becomes the plugin system (local, trusted, policy-bound; MCP servers
   wrappable) with 1Password as the first plugin, a credential-provider kind the model cannot read.
   Chrome extension (13) and skills (14) ship as plugins.
