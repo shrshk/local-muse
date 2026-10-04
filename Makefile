@@ -1,11 +1,14 @@
 .DEFAULT_GOAL := help
-.PHONY: help env create-user history build sandbox-image up up-detached down restart logs ps psql migrate \
+.PHONY: help env create-user history build sandbox-image ollama up up-detached down restart logs ps psql migrate \
         test test-integration lint format typecheck check web-dev clean
 
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 # uv warns when an unrelated virtualenv is active; each project uses its own .venv.
 UV := env -u VIRTUAL_ENV uv run
 PY_PROJECTS := backend sandboxd
+# Must match .env; override on the command line (make up-detached MODEL_PROVIDER=anthropic).
+MODEL_PROVIDER ?= ollama
+MODEL_NAME ?= qwen3.8:27b
 
 # -- lifecycle ---------------------------------------------------------------
 
@@ -20,13 +23,16 @@ create-user: ## Create a login user: make create-user USERNAME=owner (prompts fo
 build: ## Build all images, including the sandbox image
 	$(COMPOSE) --profile images build
 
-up: ## Run the stack in the foreground
+ollama: ## Start native Ollama if it is not running and check the model is pulled
+	@if [ "$(MODEL_PROVIDER)" = "ollama" ]; then MODEL_NAME=$(MODEL_NAME) bash infra/ollama-up.sh; fi
+
+up: ollama ## Run the stack in the foreground
 	$(COMPOSE) up --build
 
 sandbox-image: ## Build the sandbox image sandboxd runs code in
 	$(COMPOSE) --profile images build sandbox-image
 
-up-detached: sandbox-image ## Run the stack in the background and wait for health
+up-detached: ollama sandbox-image ## Run the stack in the background and wait for health
 	$(COMPOSE) up -d --build --wait
 
 down: ## Stop the stack
