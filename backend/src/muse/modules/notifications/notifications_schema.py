@@ -11,6 +11,8 @@ class NotificationView(BaseModel):
     conversation_id: uuid.UUID | None
     goal_id: uuid.UUID | None
     kind: str
+    importance: str = "normal"
+    approval_id: uuid.UUID | None = None
     title: str
     body: str
     created_at: dt.datetime

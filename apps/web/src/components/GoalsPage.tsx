@@ -120,6 +120,13 @@ export function GoalsPage() {
     return () => clearInterval(id);
   }, [load, anyRunning]);
 
+  const [tuned, setTuned] = useState<string | null>(null);
+  const feedback = async (id: string, kind: string, signal: 'more' | 'less' | 'none') => {
+    const pref = await api.notificationFeedback(id, signal);
+    const label = { all: 'all', important: 'important only', none: 'feed only (no push)' }[pref.level];
+    setTuned(`${kind} notifications: ${label}`);
+  };
+
   const open = goals.filter((g) => g.status === 'active' || g.status === 'pending');
   const past = goals.filter((g) => g.status !== 'active' && g.status !== 'pending').slice(0, 10);
   const unread = notifications.filter((n) => !n.read_at);
@@ -132,6 +139,7 @@ export function GoalsPage() {
       </header>
 
       <h3 className="section-title">Notifications {unread.length > 0 && <span className="badge">{unread.length} new</span>}</h3>
+      {tuned && <p className="muted">{tuned}</p>}
       <ul className="facts">
         {notifications.length === 0 && <p className="muted">Nothing yet.</p>}
         {notifications.slice(0, 20).map((n) => (
@@ -141,11 +149,26 @@ export function GoalsPage() {
               <span className="muted">{new Date(n.created_at).toLocaleString()}</span>
             </div>
             <span>{n.body}</span>
-            {!n.read_at && (
-              <button className="link" onClick={() => void api.markRead(n.id).then(load)}>
-                Mark read
-              </button>
-            )}
+            <div className="row">
+              {!n.read_at && (
+                <button className="link" onClick={() => void api.markRead(n.id).then(load)}>
+                  Mark read
+                </button>
+              )}
+              {n.kind !== 'approval' && n.kind !== 'test' && (
+                <>
+                  <button className="link" onClick={() => void feedback(n.id, n.kind, 'more')}>
+                    More like this
+                  </button>
+                  <button className="link" onClick={() => void feedback(n.id, n.kind, 'less')}>
+                    Less
+                  </button>
+                  <button className="link" onClick={() => void feedback(n.id, n.kind, 'none')}>
+                    Feed only
+                  </button>
+                </>
+              )}
+            </div>
           </li>
         ))}
       </ul>

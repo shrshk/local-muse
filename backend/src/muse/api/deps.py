@@ -12,6 +12,7 @@ from muse.modules.goals.goals_handler import GoalsHandler
 from muse.modules.health.health_handler import HealthHandler
 from muse.modules.memory.memory_handler import ProfileMemoryHandler
 from muse.modules.notifications.notifications_handler import NotificationsHandler
+from muse.modules.push.push_handler import PushHandler
 from muse.modules.realtime.realtime_handler import RealtimeHandler
 from muse.modules.topics.topics_handler import TopicsHandler
 
@@ -68,6 +69,11 @@ def goals_handler(request: Request) -> GoalsHandler:
 
 def notifications_handler(request: Request) -> NotificationsHandler:
     handler: NotificationsHandler = request.app.state.notifications_handler
+    return handler
+
+
+def push_handler(request: Request) -> PushHandler:
+    handler: PushHandler = request.app.state.push_handler
     return handler
 
 

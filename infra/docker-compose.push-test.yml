@@ -1,0 +1,19 @@
+# Test-only overlay: a fake push service and a backend allowed to reach it over http. Used by
+# backend/tests/integration/test_push.py, which restores the normal backend afterwards.
+services:
+  push-mock:
+    image: local-muse-backend:local
+    command: ["python", "/support/push_mock.py"]
+    volumes:
+      - ../backend/tests/support:/support:ro
+    ports:
+      - "127.0.0.1:${PUSH_MOCK_PORT:-18082}:8082"
+    mem_limit: 128m
+
+  backend:
+    environment:
+      PUSH_ALLOWED_HOSTS: push-mock
+      PUSH_ALLOW_HTTP: "true"
+    depends_on:
+      push-mock:
+        condition: service_started

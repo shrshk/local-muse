@@ -86,6 +86,7 @@ class PostgresApprovalStore:
                 summarize(proposal, reason),
                 conversation_id=proposal.conversation_id,
                 approval_id=approval_id,
+                importance="high",
             )
             return approval_id
 

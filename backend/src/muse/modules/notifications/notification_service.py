@@ -1,7 +1,7 @@
 """NotificationService (spec §17): attention-worthy events, separate from high-volume realtime.
 
 Stores the notification (Postgres is the truth) and publishes `notification.created` on the
-user's channel. Mobile push delivery plugs in here later.
+user's channel. The push dispatcher (`modules/push`) reads the same table as its outbox.
 """
 
 import uuid
@@ -31,9 +31,10 @@ class NotificationService:
         conversation_id: uuid.UUID | None = None,
         goal_id: uuid.UUID | None = None,
         approval_id: uuid.UUID | None = None,
+        importance: str = "normal",
     ) -> NotificationView:
         return await NotificationsController(conn).create(
-            user_id, kind, title, body, conversation_id, goal_id, approval_id
+            user_id, kind, title, body, conversation_id, goal_id, approval_id, importance
         )
 
     async def announce(self, notification: NotificationView, user_id: uuid.UUID) -> None:

@@ -187,8 +187,24 @@ export interface AppNotification {
   conversation_id: string | null;
   goal_id: string | null;
   kind: string;
+  importance: 'normal' | 'high';
   title: string;
   body: string;
   created_at: string;
   read_at: string | null;
+}
+
+export type NotifyLevel = 'all' | 'important' | 'none';
+
+export interface NotificationPreference {
+  kind: string;
+  level: NotifyLevel;
+  daily_cap: number;
+}
+
+export interface PushDevice {
+  id: string;
+  user_agent: string | null;
+  last_success_at: string | null;
+  created_at: string;
 }

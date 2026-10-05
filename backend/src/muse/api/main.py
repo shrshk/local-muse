@@ -1,5 +1,6 @@
 """FastAPI app. Routers are transport only; handlers own the logic."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from muse.api.routers import (
     health,
     memory,
     models,
+    push,
     realtime,
     topics,
 )
@@ -28,8 +30,12 @@ from muse.modules.health.health_handler import HealthHandler
 from muse.modules.health.probes import CentrifugoProbe, ModelProbe, PostgresProbe, TemporalProbe
 from muse.modules.memory.memory_handler import ProfileMemoryHandler
 from muse.modules.notifications.notifications_handler import NotificationsHandler
+from muse.modules.push.dispatcher import PushDispatcher
+from muse.modules.push.push_handler import PushHandler, load_vapid_key
+from muse.modules.push.sender import PushSender
 from muse.modules.realtime.realtime_handler import RealtimeHandler
 from muse.modules.topics.topics_handler import TopicsHandler
+from muse.realtime.publisher import RealtimePublisher
 from muse.shared.db import create_engine
 from muse.shared.logger import configure_logging, get_logger
 from muse.shared.settings import get_settings
@@ -69,12 +75,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.allowlist_handler = AllowlistHandler(engine)
     app.state.goals_handler = GoalsHandler(engine, temporal, settings)
     app.state.notifications_handler = NotificationsHandler(engine)
+    vapid = await load_vapid_key(engine)
+    app.state.push_handler = PushHandler(
+        engine, vapid, settings, RealtimePublisher(engine, http, settings)
+    )
+    push_stop = asyncio.Event()
+    push_task = asyncio.create_task(
+        PushDispatcher(engine, PushSender(http, vapid, settings)).run(push_stop)
+    )
     logger.info(
         "backend_ready",
         model=settings.model_name,
         mode=settings.local_muse_mode,
     )
     yield
+    push_stop.set()
+    await push_task
     await provider.aclose()
     await http.aclose()
     await engine.dispose()
@@ -91,6 +107,7 @@ for router in (
     goals.router,
     memory.router,
     models.router,
+    push.router,
     realtime.router,
 ):
     app.include_router(router)

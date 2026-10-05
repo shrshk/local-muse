@@ -148,3 +148,17 @@ button.link { border: none; background: none; color: var(--muted); padding: 4px;
 .goal-form__timing { display: flex; gap: 8px; align-items: center; }
 .goal-form__timing input { width: 90px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; }
 .form select, .goal-form__timing select { border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px; font: inherit; color: inherit; }
+
+/* Notification settings (Status page) and feed actions */
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.row__label { min-width: 64px; }
+.row__cap { display: flex; align-items: center; gap: 6px; }
+.row__cap input { width: 64px; }
+
+/* Phones: tabs get their own full-width row so every tab is visible without scrolling. */
+@media (max-width: 639px) {
+  .shell__head { flex-wrap: wrap; row-gap: 8px; padding-top: calc(10px + env(safe-area-inset-top)); }
+  .shell__head nav { order: 3; flex-basis: 100%; overflow-x: visible; }
+  .shell__head nav button { flex: 1; padding: 6px 2px; font-size: 0.875rem; }
+  .shell__head > .link { margin-left: auto; }
+}

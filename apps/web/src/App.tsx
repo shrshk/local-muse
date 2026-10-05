@@ -10,11 +10,18 @@ import { MemoryPage } from './components/MemoryPage';
 import { StatusPage } from './components/StatusPage';
 import type { Principal } from './types';
 
-type Tab = 'chat' | 'approvals' | 'goals' | 'memory' | 'status';
+const TABS = ['chat', 'approvals', 'goals', 'memory', 'status'] as const;
+type Tab = (typeof TABS)[number];
+
+/** `/?tab=approvals` opens that tab: notifications deep-link here. */
+function initialTab(): Tab {
+  const wanted = new URLSearchParams(window.location.search).get('tab');
+  return TABS.find((t) => t === wanted) ?? 'chat';
+}
 
 export function App() {
   const [user, setUser] = useState<Principal | null | undefined>(undefined);
-  const [tab, setTab] = useState<Tab>('chat');
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   useEffect(() => {
     api
@@ -37,7 +44,7 @@ export function App() {
       <header className="shell__head">
         <strong>Local Muse</strong>
         <nav>
-          {(['chat', 'approvals', 'goals', 'memory', 'status'] as const).map((t) => (
+          {TABS.map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t[0].toUpperCase() + t.slice(1)}
             </button>

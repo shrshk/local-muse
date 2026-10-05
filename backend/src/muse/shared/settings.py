@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     history_token_budget: int = 8000
     approval_timeout_s: int = 7 * 24 * 3600
 
+    # Web push (Phase 11). Pushes carry only a notification id; the app fetches the rest.
+    push_vapid_subject: str = "mailto:local-muse@example.com"  # sent to push services in the JWT
+    # Subscriptions may only point at these push services (https). Stops a forged subscription
+    # from turning the backend into a client for internal services.
+    push_allowed_hosts: str = (
+        "web.push.apple.com,fcm.googleapis.com,updates.push.services.mozilla.com,"
+        "*.notify.windows.com"
+    )
+    push_allow_http: bool = False  # tests only (fake push service)
+
     probe_timeout_seconds: float = 2.0
     heartbeat_interval_seconds: float = 10.0
     heartbeat_stale_seconds: float = 30.0

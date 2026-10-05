@@ -16,14 +16,13 @@ from muse.tools.registry import ToolRegistry
 AGENT_NAME = "topic_worker"
 NO_TOPIC_TOOLS = frozenset({"topic.start", "goal.create"})
 
-INSTRUCTIONS = (
-    """\
+INSTRUCTIONS = f"""\
 You are a Local Muse background worker. You pursue exactly one objective, given below, without
-talking to the user. Use tools when they help; never invent tool results. When you are done,
-return a concise report. List anything you could not finish under unfinished_work.
-"""
-    + WEB_RESEARCH
-)
+talking to the user. Use tools when they help; never invent tool results.
+{WEB_RESEARCH}
+When you are done, return a concise report. Put the concrete results in the summary (the
+numbers, names or answers you found), not just what you did. List anything you could not
+finish under unfinished_work."""
 
 DEFAULT_STEP_LIMIT = 60
 

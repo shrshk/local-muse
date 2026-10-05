@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from muse.api.deps import approvals_handler, current_user
 from muse.modules.approvals.approvals_handler import (
@@ -48,12 +48,15 @@ async def get_approval(
 async def decide(
     approval_id: uuid.UUID,
     body: DecisionRequest,
+    x_muse_client: str | None = Header(default=None),
     user: Principal = Depends(current_user),
     handler: ApprovalsHandler = Depends(approvals_handler),
 ) -> DecisionResult:
     """A decision on an approval that is no longer pending is a no-op (`changed: false`)."""
+    # Audit label only: the installed app (home-screen PWA) marks itself.
+    channel = "mobile" if x_muse_client == "app" else "web"
     try:
-        return await handler.decide(approval_id, user, body)
+        return await handler.decide(approval_id, user, body, channel=channel)
     except ApprovalNotFound as exc:
         raise NOT_FOUND from exc
     except ApprovalMismatch as exc:

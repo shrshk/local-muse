@@ -20,6 +20,7 @@ dependencies = [
     "tzdata>=2026.4",
     "email-validator>=2.3",
     "playwright>=1.63",
+    "pywebpush>=2.5.0",
 ]
 
 [dependency-groups]
@@ -64,6 +65,11 @@ strict = true
 plugins = ["pydantic.mypy"]
 mypy_path = "src"
 packages = ["muse"]
+
+[[tool.mypy.overrides]]
+# Web push libraries ship no type information.
+module = ["py_vapid", "pywebpush"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

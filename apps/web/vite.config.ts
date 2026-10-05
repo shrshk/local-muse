@@ -10,6 +10,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Own service worker (src/sw.ts) so it can handle pushes; workbox injects the shell list.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       manifest: {
         name: 'Local Muse',
         short_name: 'Muse',
@@ -17,11 +21,19 @@ export default defineConfig({
         theme_color: '#111418',
         background_color: '#111418',
         display: 'standalone',
-        icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
-      workbox: {
-        // Shell caching only; API data is never served from cache.
-        navigateFallbackDenylist: [/^\/api\//, /^\/connection\//],
+      injectManifest: {
+        // Shell only; API data is never cached (sw.ts routes navigations, nothing else).
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
       },
     }),
   ],

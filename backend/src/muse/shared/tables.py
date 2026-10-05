@@ -345,5 +345,47 @@ notifications = Table(
     Column("body", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("read_at", DateTime(timezone=True)),
+    # Web push (Phase 11): null = not yet handled by the dispatcher.
+    Column("push_status", Text),
+    Column("importance", Text, nullable=False, server_default=text("'normal'")),
     Index("ix_notifications_user_created", "user_id", "created_at"),
+    Index(
+        "ix_notifications_push_pending",
+        "created_at",
+        postgresql_where=text("push_status IS NULL"),
+    ),
+)
+
+push_subscriptions = Table(
+    "push_subscriptions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("endpoint", Text, nullable=False, unique=True),
+    Column("p256dh", Text, nullable=False),
+    Column("auth", Text, nullable=False),
+    Column("user_agent", Text),
+    Column("failure_count", Integer, nullable=False, server_default=text("0")),
+    Column("last_success_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+notification_preferences = Table(
+    "notification_preferences",
+    metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("level", Text, nullable=False),
+    Column("daily_cap", Integer, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("user_id", "kind"),
+)
+
+# Server-held key material that is not a user secret (the VAPID signing key).
+app_keys = Table(
+    "app_keys",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("value", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

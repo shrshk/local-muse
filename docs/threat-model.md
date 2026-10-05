@@ -32,6 +32,8 @@ PRIVILEGED
 | 8 | sandboxd API reached by something other than worker | Internal `sandbox-control` network (worker + sandboxd only) plus a bearer token from `.env` | 1 |
 | 9 | LAN or internet exposure | All published ports bind `127.0.0.1`; phone access only via Tailscale; no third-party message relay | 1, 11 |
 | 10 | Prompt-injected page steers the browser to internal services (Temporal UI can terminate workflows; Ollama; sandboxd; cloud metadata) | Every browser request's host must resolve only to globally routable addresses (`browser/netguard.py`, Playwright route guard); only http/https URLs; tested against temporal-ui, host.docker.internal, sandboxd, loopback, 169.254.169.254, file:// | 7 |
+| 11 | Forged push subscription makes the backend call internal services (SSRF) | Endpoint must be https on an allowlisted push-service host (`push_allowed_hosts`), checked at subscribe and send; no redirects; tested against sandboxd, postgres, temporal-ui | 11 |
+| 12 | Notification content leaks through push services | Push payload is only an encrypted notification id; text is fetched from the Mac over Tailscale with the session cookie | 11 |
 
 ## Residual risks (accepted for v1)
 
@@ -48,4 +50,6 @@ PRIVILEGED
 - Authenticated page content that the agent reads is in Temporal history (activity results) and
   in model context, like any tool output. Only human-typed text is kept out of history.
 - Conversation summaries may paraphrase authenticated content; they are not verbatim copies.
+- Push services (Apple, Google) see push timing and frequency, not content. The VAPID key
+  lives in Postgres.
 - Login has no rate limiting yet; the perimeter is loopback now and Tailscale in Phase 11.

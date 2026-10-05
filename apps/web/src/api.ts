@@ -7,8 +7,11 @@ import type {
   Conversation,
   ConversationState,
   HealthReport,
+  NotificationPreference,
+  NotifyLevel,
   Principal,
   ProfileFact,
+  PushDevice,
   SendAck,
   Topic,
   TopicMemory,
@@ -17,11 +20,19 @@ import type {
 
 export class UnauthorizedError extends Error {}
 
+/** True when running as the installed home-screen app (the "mobile" approval channel). */
+export const isInstalledApp = () =>
+  typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: 'same-origin',
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(isInstalledApp() ? { 'X-Muse-Client': 'app' } : {}),
+      ...init.headers,
+    },
   });
   if (response.status === 401) throw new UnauthorizedError('not logged in');
   if (!response.ok) {
@@ -75,6 +86,19 @@ export const api = {
   cancelGoal: (id: string) => post<Goal>(`/api/goals/${id}/cancel`),
   notifications: () => request<AppNotification[]>('/api/notifications'),
   markRead: (id: string) => post<void>(`/api/notifications/${id}/read`),
+  notificationFeedback: (id: string, signal: 'more' | 'less' | 'none') =>
+    post<NotificationPreference>(`/api/notifications/${id}/feedback`, { signal }),
+  notificationPreferences: () => request<NotificationPreference[]>('/api/notification_preferences'),
+  setNotificationPreference: (kind: string, level: NotifyLevel, dailyCap: number) =>
+    request<NotificationPreference>(`/api/notification_preferences/${encodeURIComponent(kind)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ level, daily_cap: dailyCap }),
+    }),
+  pushKey: () => request<{ public_key: string }>('/api/push/key'),
+  pushSubscribe: (subscription: PushSubscriptionJSON) => post<void>('/api/push/subscriptions', subscription),
+  pushUnsubscribe: (endpoint: string) => post<void>('/api/push/unsubscribe', { endpoint }),
+  pushDevices: () => request<PushDevice[]>('/api/push/subscriptions'),
+  pushTest: () => post<void>('/api/push/test'),
   subscribeToken: (conversationId: string) =>
     post<ConnectionToken>('/api/realtime/subscribe_token', { conversation_id: conversationId }),
   subscribeBrowserToken: (sessionId: string) =>

@@ -1,5 +1,6 @@
 import { useHealth } from '../hooks/useHealth';
 import { useRealtime } from '../hooks/useRealtime';
+import { NotificationSettings } from './NotificationSettings';
 import { ServiceTile } from './ServiceTile';
 
 export function StatusPage() {
@@ -35,6 +36,7 @@ export function StatusPage() {
           detail="Centrifugo websocket with backend JWT"
         />
       </ul>
+      <NotificationSettings />
     </main>
   );
 }

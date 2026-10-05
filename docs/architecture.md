@@ -104,6 +104,8 @@ Tables from spec §19 land in the phase that first uses them, not all at once.
 | 7–8 | `browser_sessions`, `browser_frames`, `browser_input_inbox`, `data_taint` (+ worker-only `browser_profile` volume) |
 | 9 | `goals`, `notifications` |
 | 10 | `notifications.approval_id` (`telegram_*` columns added in 0011, dropped in 0012) |
+| 9 fix | `goals.running_since` (0013) |
+| 11 | `push_subscriptions`, `notification_preferences`, `app_keys` (VAPID key); `notifications.push_status`, `importance` (0014) |
 | — | `connector_accounts` (schema only, when credential plumbing lands) |
 
 ### Why `service_heartbeats`
@@ -212,3 +214,30 @@ through a third-party chat service. The mobile app (next phase) replaces it with
 pushes; details and decisions go over Tailscale only. What stayed: approval requests create a
 `kind=approval` notification in the same transaction as the approval row (the future push
 outbox), and `ApprovalsHandler.decide` takes a `channel`.
+
+## Phone app and push (Phase 11)
+
+The web app is an installable PWA (manifest, PNG icons, own service worker `apps/web/src/sw.ts`
+that caches the shell only). The phone reaches it at `https://<mac>.<tailnet>.ts.net` via
+`tailscale serve` (docs/phone-setup.md); `PUBLIC_ORIGIN` adds that origin to Centrifugo.
+
+- **Outbox:** every notification row is shown in the app's feed. `PushDispatcher`
+  (`modules/push/dispatcher.py`, in the backend process) claims rows with `push_status IS NULL`
+  (last 60 min, `FOR UPDATE SKIP LOCKED`) and sets `sent` / `held` / `skipped` / `failed` /
+  `no_device`.
+- **Interruption budget** (`modules/notifications/budget.py`, pure): approvals (and the test
+  push) always push. Other kinds have a level (all / important only / feed only) and a daily cap,
+  stored in `notification_preferences` with defaults per kind. Importance is set by trusted code:
+  approvals and one-shot or condition-met goal results are `high`, plain value changes `normal`.
+  "More like this / Less / Feed only" on a feed item moves that kind one level.
+- **Content-free push:** payload `{"id": <notification id>}`, RFC 8291 encrypted, VAPID signed
+  (`modules/push/sender.py`, httpx). The service worker fetches `/api/notifications/{id}` with the
+  session cookie to show the text, and always shows something (iOS revokes silent pushers).
+  Clicking opens `/?tab=approvals|goals`.
+- **Endpoint allowlist:** a subscription endpoint must be https on a known push service (Apple,
+  Google, Mozilla, Microsoft); checked at subscribe and at send. Otherwise a forged subscription
+  would make the backend POST to internal services.
+- **VAPID key:** generated on first start, stored in `app_keys` (Postgres). Losing it only means
+  devices re-subscribe.
+- **Approvals from the app:** the installed app sends `X-Muse-Client: app`; the decision is
+  recorded with `channel="mobile"` (audit label only; same handler and checks as the web).

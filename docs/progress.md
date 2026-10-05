@@ -16,7 +16,7 @@ Spec: `plans/local_muse_claude_handoff_v2.md`.
 | 8 Authenticated browser | done |
 | 9 Goals | done |
 | 10 Telegram | done, then removed 2026-10-01 (local-only) |
-| 11 PWA / phone + mobile app (former 14 merged in) | next |
+| 11 PWA / phone + mobile app (former 14 merged in) | built; iPhone check pending (user) |
 | 12 Plugin system + 1Password plugin + takeover filter | planned (user request) |
 | 13 Chrome extension (as a plugin) | planned (user request) |
 | 14 Skills, shipped in plugins (finance first) | planned (user request) |
@@ -484,6 +484,47 @@ Known limitations:
 - Notifications older than 60 minutes when Telegram comes online are not sent.
 - No per-kind notification preferences yet.
 
+## Phase 11 — PWA, phone, push
+
+Built 2026-10-04. Design: `architecture.md` → Phone app and push. Setup: `phone-setup.md`.
+
+What works:
+
+- Installable PWA: manifest with PNG and maskable icons, apple-touch-icon and iOS meta tags, own
+  service worker (shell cache, push, notification click), deep links `/?tab=approvals|goals|...`.
+  Phone layout: tabs on their own row under 640 px.
+- Web Push with content-free payloads: subscribe/unsubscribe, device list, "Send test"; the
+  service worker fetches the text from the Mac. VAPID key generated once into Postgres.
+- Interruption budget: per-kind level and daily cap in Status → "What may interrupt you";
+  "More like this / Less / Feed only" on Goals feed items; approvals always push.
+- Approvals from the installed app recorded as `channel="mobile"`.
+- Tailscale: `PUBLIC_ORIGIN` for Centrifugo; `tailscale serve` steps in phone-setup.md.
+
+Acceptance evidence:
+
+- `tests/integration/test_push.py` (6, fake push service overlay
+  `infra/docker-compose.push-test.yml`): the push body is encrypted and decrypts to only
+  `{"id"}`; the app fetches the text; muted kind → `held`, no push; "more" → important only,
+  then only the high-importance item pushes; a 410 subscription is dropped; subscriptions to
+  sandboxd, postgres and temporal-ui are refused (422).
+- `tests/unit/test_push.py` (16): endpoint allowlist (http, internal hosts, userinfo, look-alike
+  domains), budget matrix, feedback transitions, defaults, encryption + VAPID headers with a mock
+  transport, 410 handling, disallowed endpoint never contacted.
+- Headless Chrome at 390 px: service worker active, manifest served as
+  `application/manifest+json` with 192/512/maskable icons, deep link opens Goals, preferences
+  save, no horizontal scroll, no console errors.
+
+Not checked here: a real iPhone over Tailscale (install, push from APNs, approve from the app).
+Needs the user's Tailscale and phone; steps in phone-setup.md.
+
+Regression: full integration suite 53/54; the miss was a topic report that described the 3**50 run without the number (model variance; passed on rerun). The topic worker prompt now ends with "put the concrete results in the summary"; sandbox + topics rerun 10/10. Unit 186, lint and mypy clean.
+
+Known limitations:
+
+- iOS shows no Approve/Deny buttons on the notification itself (Web Push has no actions on
+  iOS); tapping opens the Approvals tab.
+- Daily cap counts pushes in the last 24 h, not per calendar day.
+
 ## Planned — Phase 12: plugin system, 1Password plugin, takeover filter
 
 Inspired by OpenAI Dots plugins and Meta Muse Connectors, kept local and under our policy.
@@ -664,6 +705,10 @@ recap videos.
 
 ## Decisions log
 
+- 2026-10-04: Phase 11 push design: payload is only the notification id (text fetched over
+  Tailscale), subscription endpoints allowlisted to known push services (SSRF), VAPID key in
+  Postgres (not `.env`), the notifications table stays the outbox, PNG icons rendered from
+  icon.svg. Custom service worker (`injectManifest`) replaces the generated one.
 - 2026-10-04: Goal fixes after the first manual test (a goal felt like it did nothing for 9 min):
   "Once, now" (`after_minutes=0`) and recurring goals check immediately (`trigger_immediately`);
   `goals.running_since` (0013) plus steps derived from `actions` show "Checking now… N steps,

@@ -58,6 +58,13 @@ def normalize(value: str | None) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower().rstrip(".!"))
 
 
+def importance(goal: dict[str, Any], observation: RecordObservationInput) -> str:
+    """High when the user asked for this exact moment; a plain value change is normal."""
+    if goal["kind"] == "once" or (goal["condition"] and observation.condition_met):
+        return "high"
+    return "normal"
+
+
 def should_notify(goal: dict[str, Any], observation: RecordObservationInput) -> bool:
     if goal["kind"] == "once":
         return True  # "check again tomorrow": the user asked for this one result
@@ -144,6 +151,7 @@ class GoalActivities:
                     request.summary,
                     goal["conversation_id"],
                     request.goal_id,
+                    importance=importance(goal, request),
                 )
                 await ConversationsController(conn).lock(goal["conversation_id"])
                 await MessagesController(conn).append(
